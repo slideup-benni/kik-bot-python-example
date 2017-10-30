@@ -226,7 +226,7 @@ kik.set_configuration(Configuration(webhook='https://www.example.com/incoming'))
 If you're using [ngrok](https://ngrok.com) as shown above, you would set the webhook as follows:
 
 ```python
-kik.set_configuration(Configuration(webhook='https://ABCDEFG123.ngrok.io'))
+kik.set_configuration(Configuration(webhook='https://ABCDEFG123.ngrok.io/incoming'))
 ```
 
 #### Launch Your Bot 
