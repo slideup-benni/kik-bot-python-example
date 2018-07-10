@@ -1,0 +1,8 @@
+*.db
+daemon/log/main/*
+daemon/log/supervise
+daemon/supervise
+.idea
+config.ini
+
+!daemon/log/main/.gitkeep
