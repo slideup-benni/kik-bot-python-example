@@ -966,7 +966,7 @@ class CharacterPersistentClass:
         self.cursor.execute((
             "UPDATE characters "
             "SET deletor_id=?, deleted=? "
-            "WHERE user_id=? AND char_id=?"
+            "WHERE user_id LIKE ? AND char_id=?"
         ), data)
 
     def remove_last_char_change(self, user_id, deletor_id, char_id=None):
@@ -985,7 +985,7 @@ class CharacterPersistentClass:
             "WHERE id = ("
             "    SELECT id "
             "    FROM characters "
-            "    WHERE user_id=? AND char_id=? AND deleted IS NULL "
+            "    WHERE user_id LIKE ? AND char_id=? AND deleted IS NULL "
             "    ORDER BY created DESC "
             "    LIMIT 1"
             ")"
@@ -1000,7 +1000,7 @@ class CharacterPersistentClass:
         self.cursor.execute((
             "SELECT id, char_id, char_name, text, creator_id, created "
             "FROM  characters "
-            "WHERE user_id=? AND char_id=? AND deleted IS NULL "
+            "WHERE user_id LIKE ? AND char_id=? AND deleted IS NULL "
             "ORDER BY created DESC "
             "LIMIT 1"
         ), [user_id, char_id])
@@ -1013,7 +1013,7 @@ class CharacterPersistentClass:
         self.cursor.execute((
             "SELECT id, char_id, char_name, text, creator_id, MAX(created) AS created "
             "FROM characters "
-            "WHERE user_id=? AND deleted IS NULL "
+            "WHERE user_id LIKE ? AND deleted IS NULL "
             "GROUP BY char_id"
         ), [user_id])
         chars = self.cursor.fetchall()
@@ -1056,7 +1056,7 @@ class CharacterPersistentClass:
         self.cursor.execute((
             "UPDATE users "
             "SET deletor_id=?, deleted=? "
-            "WHERE user_id = ?"
+            "WHERE user_id LIKE ?"
         ), data)
         return True
 
@@ -1068,7 +1068,7 @@ class CharacterPersistentClass:
         self.cursor.execute((
             "SELECT id "
             "FROM  users "
-            "WHERE user_id=? AND deleted IS NULL "
+            "WHERE user_id LIKE ? AND deleted IS NULL "
             "LIMIT 1"
         ), [user_id])
         return self.cursor.fetchone() is not None
@@ -1081,10 +1081,10 @@ class CharacterPersistentClass:
         self.cursor.execute((
             "SELECT id "
             "FROM  users "
-            "WHERE user_id=? AND deleted IS NOT NULL "
+            "WHERE user_id LIKE ? AND deleted IS NULL "
             "LIMIT 1"
         ), [user_id])
-        return self.cursor.fetchone() is not None
+        return self.cursor.fetchone() is None
 
     def find_char(self, name, user_id):
         self.connect_database()
@@ -1099,7 +1099,7 @@ class CharacterPersistentClass:
         chars = []
 
         for char in chars_raw:
-            if re.search(r".*?name(.*?):[^A-Z]*?{}[^A-Z]*?".format(name), char['text'], re.MULTILINE+re.IGNORECASE) is not None:
+            if re.search(r".*?name(.*?):[^a-z]*?{}[^a-z]*?".format(re.escape(name)), char['text'], re.MULTILINE+re.IGNORECASE) is not None:
                 chars.append(char)
 
         return chars
@@ -1117,7 +1117,7 @@ class CharacterPersistentClass:
         chars = []
 
         for char in chars_raw:
-            if re.search(r".*?{}(.*?):[^A-Z]*?{}[^A-Z]*?".format(type, query), char['text'], re.MULTILINE+re.IGNORECASE) is not None:
+            if re.search(r".*?{}(.*?):[^a-z]*?{}[^a-z]*?".format(re.escape(type), re.escape(query)), char['text'], re.MULTILINE+re.IGNORECASE) is not None:
                 chars.append(char)
 
         return chars
