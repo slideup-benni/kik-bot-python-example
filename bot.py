@@ -21,6 +21,7 @@ Unless required by applicable law or agreed to in writing, software distributed 
 language governing permissions and limitations under the License.
 
 """
+import argparse
 import re
 from configparser import SectionProxy
 from pathlib import Path
@@ -62,7 +63,7 @@ class KikBot(Flask):
         #reread config
         global config
         global default_config
-        config.read(os.path.dirname(__file__) + '/config.ini')
+        config.read(args.config.name)
         default_config = config['DEFAULT']  # type: SectionProxy
 
         for message in messages:
@@ -1136,7 +1137,7 @@ class CharacterPersistentClass:
 def create_database(database_path):
     connection = sqlite3.connect(database_path)
     cursor = connection.cursor()
-    sql = (
+    cursor.execute((
         "CREATE TABLE characters ("
         "    id INTEGER PRIMARY KEY AUTOINCREMENT,"
         "    user_id TEXT NOT NULL,"
@@ -1147,6 +1148,8 @@ def create_database(database_path):
         "    deletor_id TEXT,"
         "    deleted INTEGER"
         "); "
+    ))
+    cursor.execute((
         "CREATE TABLE users ("
         "    id INTEGER PRIMARY KEY AUTOINCREMENT,"
         "    user_id TEXT NOT NULL,"
@@ -1155,8 +1158,7 @@ def create_database(database_path):
         "    deletor_id TEXT,"
         "    deleted INTEGER"
         ")"
-    )
-    cursor.execute(sql)
+    ))
     connection.commit()
     connection.close()
     print ("Datenbank {} angelegt".format(os.path.basename(database_path)))
@@ -1165,8 +1167,12 @@ def create_database(database_path):
 if __name__ == "__main__":
     """ Main program """
 
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--config', '-c', type=argparse.FileType('r'), required=True, dest='config', help='The config-File')
+    args = parser.parse_args()
+
     config = configparser.ConfigParser()
-    config.read(os.path.dirname(__file__)+'/config.ini')
+    config.read(args.config.name)
     default_config = config['DEFAULT'] # type: SectionProxy
 
     database_path = default_config.get("DatabasePath", "{home}/database.db").format(home=str(Path.home()))
