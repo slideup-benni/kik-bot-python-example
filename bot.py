@@ -21,6 +21,7 @@ Unless required by applicable law or agreed to in writing, software distributed 
 language governing permissions and limitations under the License.
 
 """
+import re
 from configparser import SectionProxy
 from pathlib import Path
 
@@ -253,23 +254,69 @@ class KikBot(Flask):
                 # Befehl Anzeigen
                 #
                 elif message_command in ["anzeigen", "show"]:
+                    character_persistent_class = CharacterPersistentClass()
+
+                    char_data = None
+                    chars = None
+                    char_name = None
+
                     if len(message_body.split(None,2)) == 3 and message_body.split(None,2)[1][0] == "@" and message_body.split(None,2)[2].isdigit():
                         selected_user = message_body.split(None,2)[1][1:].strip()
                         char_id = int(message_body.split(None,2)[2])
+                    elif len(message_body.split(None,2)) == 3 and message_body.split(None,2)[1][0] == "@" and message_body.split(None,2)[2].strip() != "":
+                        selected_user = message_body.split(None,2)[1][1:].strip()
+                        char_name = message_body.split(None, 2)[2].strip()
+                        chars = character_persistent_class.find_char(char_name, selected_user)
+                        if len(chars) == 1:
+                            char_id = chars[0]['char_id']
+                            char_data = chars[0]
+                        else:
+                            char_id = None
                     elif len(message_body.split(None,1)) == 2 and message_body.split(None,1)[1].isdigit():
                         selected_user = message.from_user
                         char_id = int(message_body.split(None,1)[1])
                     elif len(message_body.split(None,1)) == 2 and message_body.split(None,1)[1][0] == "@":
                         selected_user = message_body.split(None,1)[1][1:].strip()
                         char_id = None
+                    elif len(message_body.split(None,1)) == 2 and message_body.split(None,1)[1].strip() != "":
+                        char_name = message_body.split(None, 1)[1].strip()
+                        chars = character_persistent_class.find_char(char_name, message.from_user)
+                        selected_user = message.from_user
+                        if len(chars) == 1:
+                            char_id = chars[0]['char_id']
+                            char_data = chars[0]
+                        else:
+                            char_id = None
                     else:
                         selected_user = message.from_user
                         char_id = None
 
-                    character_persistent_class = CharacterPersistentClass()
-                    char_data = character_persistent_class.get_char(selected_user, char_id)
+                    if chars is None and char_data is None and selected_user is not None:
+                        char_data = character_persistent_class.get_char(selected_user, char_id)
+                        print(char_data)
 
-                    if char_data is None and char_id is not None:
+                    if chars is not None and len(chars) == 0 and char_name is not None:
+                        response_messages.append(TextMessage(
+                            to=message.from_user,
+                            chat_id=message.chat_id,
+                            body="Es wurde kein Charakter mit dem Namen {} des Nutzers @{} gefunden".format(char_name, selected_user),
+                            keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Liste")])]
+                        ))
+                    elif chars is not None and len(chars) > 1:
+                        resp = []
+
+                        for char in chars:
+                            resp.append(TextResponse("Anzeigen @{} {}".format(char['user_id'], char['char_id'])))
+
+                        resp.append(TextResponse("Liste"))
+
+                        response_messages.append(TextMessage(
+                            to=message.from_user,
+                            chat_id=message.chat_id,
+                            body="Es wurden {} Charaktere mit dem Namen {} des Nutzers @{} gefunden".format(len(chars), char_name, selected_user),
+                            keyboards=[SuggestedResponseKeyboard(responses=resp)]
+                        ))
+                    elif char_data is None and char_id is not None:
                         response_messages.append(TextMessage(
                             to=message.from_user,
                             chat_id=message.chat_id,
@@ -284,41 +331,8 @@ class KikBot(Flask):
                             keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Liste")])]
                         ))
                     else:
-                        keyboard_responses = []
+                        response_messages += self.create_char_messages(character_persistent_class, selected_user, char_id, char_data, message)
 
-                        max_char_id = character_persistent_class.get_max_char_id(selected_user)
-                        if max_char_id > CharacterPersistentClass.get_min_char_id():
-                            if char_id is not None and char_id > 1:
-                                keyboard_responses.append(TextResponse("Anzeigen @{} {}".format(selected_user, char_id-1)))
-                            if char_id is None or char_id < max_char_id:
-                                next_char_id = CharacterPersistentClass.get_min_char_id()+1 if char_id is None else char_id+1
-                                keyboard_responses.append(TextResponse("Anzeigen @{} {}".format(selected_user, next_char_id)))
-
-                        keyboard_responses.append(TextResponse("Liste"))
-
-                        body = "{}\n\n--- erstellt von @{} am {}".format(char_data['text'], char_data['creator_id'], datetime.datetime.fromtimestamp(char_data['created']).strftime('%Y-%m-%d %H:%M:%S'))
-                        body_split = body.split("\n")
-                        new_body = ""
-                        for b in body_split:
-                            if len(new_body) + len(b) + 2 < 1500:
-                                new_body += "\n" + b
-                            else:
-                                response_messages.append(TextMessage(
-                                    to=message.from_user,
-                                    chat_id=message.chat_id,
-                                    body=new_body,
-                                    keyboards=[SuggestedResponseKeyboard(responses=keyboard_responses)]
-                                ))
-                                new_body = b
-
-                        #bodys = textwrap.wrap(body, 1500, replace_whitespace=False)
-                        #for body in bodys:
-                        response_messages.append(TextMessage(
-                            to=message.from_user,
-                            chat_id=message.chat_id,
-                            body=new_body,
-                            keyboards=[SuggestedResponseKeyboard(responses=keyboard_responses)]
-                        ))
 
                 #
                 # Befehl Löschen
@@ -432,6 +446,56 @@ class KikBot(Flask):
                                 body="Du kannst keine Charaktere von anderen Nutzern löschen.",
                                 keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Liste")])]
                             ))
+
+                    else:
+                        response_messages.append(TextMessage(
+                            to=message.from_user,
+                            chat_id=message.chat_id,
+                            body="Fehler beim Aufruf des Befehls. Siehe Hilfe.",
+                            keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
+                        ))
+
+                #
+                # Befehl Suche
+                #
+                elif message_command in ["suche", "search"]:
+                    if len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1].strip() != "":
+                        character_persistent_class = CharacterPersistentClass()
+                        query = message_body.split(None, 1)[1].strip()
+
+                        auth = self.check_auth(character_persistent_class, message)
+                        if auth is not True:
+                            self.kik_api.send_messages([auth])
+                            continue
+
+                        chars = character_persistent_class.search_char(query)
+
+                        if len(chars) == 0:
+                            response_messages.append(TextMessage(
+                                to=message.from_user,
+                                chat_id=message.chat_id,
+                                body="Für die Suchanfrage wurden keine Charaktere gefunden.",
+                                keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Liste")])]
+                            ))
+
+                        elif len(chars) == 1:
+                            response_messages += self.create_char_messages(character_persistent_class, chars[0]['user_id'], chars[0]['char_id'], chars[0], message)
+
+                        else:
+                            resp = []
+
+                            for char in chars:
+                                resp.append(TextResponse("Anzeigen @{} {}".format(char['user_id'], char['char_id'])))
+
+                            resp.append(TextResponse("Liste"))
+                            response_messages.append(TextMessage(
+                                to=message.from_user,
+                                chat_id=message.chat_id,
+                                body="Es wurden mehrere Charaktere gefunden, die deiner Suchanfrage entsprechen.",
+                                keyboards=[SuggestedResponseKeyboard(responses=resp)]
+                            ))
+
+
 
                     else:
                         response_messages.append(TextMessage(
@@ -647,9 +711,10 @@ class KikBot(Flask):
                             "Vorlage\n"
                             "Hinzufügen (<username>) <text>\n"
                             "Ändern (<username>) (<char_id>) <text>\n"
-                            "Anzeigen (<username>) (<char_id>)\n"
+                            "Anzeigen (<username>) (<char_id>|<char_name>)\n"
                             "Löschen <eigener_username> (<char_id>)\n"
                             "Letzte-Löschen <eigener_username> (<char_id>)\n"
+                            "Suchen <char_name>\n"
                             "Berechtigen <username>\n"
                             "Liste\n\n"
                             "Die Befehle können ausgeführt werden indem man entweder den Bot direkt anschreibt oder in der Gruppe '@{} <Befehl>' eingibt.\n".format(bot_username) +
@@ -677,9 +742,10 @@ class KikBot(Flask):
                             "template\n"
                             "add (<username>) <text>\n"
                             "change (<username>) (<char_id>) <text>\n"
-                            "show (<username>) (<char_id>)\n"
+                            "show (<username>) (<char_id>|<char_name>)\n"
                             "del <eigener_username> (<char_id>)\n"
                             "del-last <eigener_username> (<char_id>)\n"
+                            "search <char_name>\n"
                             "auth <username>\n"
                             "list\n"
                         ),
@@ -779,7 +845,8 @@ class KikBot(Flask):
 
         return Response(status=200)
 
-    def check_auth(self, persistent_class, message):
+    @staticmethod
+    def check_auth(persistent_class, message):
         if persistent_class.is_auth_user(message.from_user) is False:
             return TextMessage(
                 to=message.from_user,
@@ -788,6 +855,47 @@ class KikBot(Flask):
                 keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
             )
         return True
+
+    @staticmethod
+    def create_char_messages(character_persistent_class, selected_user, char_id, char_data, message):
+        response_messages = []
+        keyboard_responses = []
+
+        max_char_id = character_persistent_class.get_max_char_id(selected_user)
+        if max_char_id > CharacterPersistentClass.get_min_char_id():
+            if char_id is not None and char_id > 1:
+                keyboard_responses.append(TextResponse("Anzeigen @{} {}".format(selected_user, char_id - 1)))
+            if char_id is None or char_id < max_char_id:
+                next_char_id = CharacterPersistentClass.get_min_char_id() + 1 if char_id is None else char_id + 1
+                keyboard_responses.append(TextResponse("Anzeigen @{} {}".format(selected_user, next_char_id)))
+
+        keyboard_responses.append(TextResponse("Liste"))
+
+        body = "{}\n\n--- erstellt von @{} am {}".format(char_data['text'], char_data['creator_id'],
+                                                         datetime.datetime.fromtimestamp(char_data['created']).strftime('%Y-%m-%d %H:%M:%S'))
+        body_split = body.split("\n")
+        new_body = ""
+        for b in body_split:
+            if len(new_body) + len(b) + 2 < 1500:
+                new_body += "\n" + b
+            else:
+                response_messages.append(TextMessage(
+                    to=message.from_user,
+                    chat_id=message.chat_id,
+                    body=new_body,
+                    keyboards=[SuggestedResponseKeyboard(responses=keyboard_responses)]
+                ))
+                new_body = b
+
+        # bodys = textwrap.wrap(body, 1500, replace_whitespace=False)
+        # for body in bodys:
+        response_messages.append(TextMessage(
+            to=message.from_user,
+            chat_id=message.chat_id,
+            body=new_body,
+            keyboards=[SuggestedResponseKeyboard(responses=keyboard_responses)]
+        ))
+        return response_messages
 
 
 class CharacterPersistentClass:
@@ -978,6 +1086,41 @@ class CharacterPersistentClass:
         ), [user_id])
         return self.cursor.fetchone() is not None
 
+    def find_char(self, name, user_id):
+        self.connect_database()
+
+        self.cursor.execute((
+            "SELECT id, char_id, char_name, text, creator_id, MAX(created) AS created "
+            "FROM characters "
+            "WHERE user_id=? AND deleted IS NULL AND text LIKE ? "
+            "GROUP BY char_id"
+        ), [user_id, "%"+name+"%"])
+        chars_raw = self.cursor.fetchall()
+        chars = []
+
+        for char in chars_raw:
+            if re.search(r".*?name(.*?):[^A-Z]*?{}[^A-Z]*?".format(name), char['text'], re.MULTILINE+re.IGNORECASE) is not None:
+                chars.append(char)
+
+        return chars
+
+    def search_char(self, query, type="name"):
+        self.connect_database()
+
+        self.cursor.execute((
+            "SELECT id, user_id, char_id, char_name, text, creator_id, MAX(created) AS created "
+            "FROM characters "
+            "WHERE deleted IS NULL AND text LIKE ? "
+            "GROUP BY char_id"
+        ), ["%"+query+"%"])
+        chars_raw = self.cursor.fetchall()
+        chars = []
+
+        for char in chars_raw:
+            if re.search(r".*?{}(.*?):[^A-Z]*?{}[^A-Z]*?".format(type, query), char['text'], re.MULTILINE+re.IGNORECASE) is not None:
+                chars.append(char)
+
+        return chars
 
 
 def create_database(database_path):
@@ -1028,4 +1171,4 @@ if __name__ == "__main__":
     # the configuration, and not every time the bot starts.
     kik.set_configuration(Configuration(webhook="{}:{}/incoming".format(default_config.get("RemoteHostIP", "www.example.com"), default_config.get("RemotePort", "8080"))))
     app = KikBot(kik, __name__)
-    app.run(port=int(default_config.get("LocalPort", 8080)), host=default_config.get("LocalIP", "0.0.0.0"), debug=True)
+    app.run(port=int(default_config.get("LocalPort", 8080)), host=default_config.get("LocalIP", "0.0.0.0"), debug=False)
