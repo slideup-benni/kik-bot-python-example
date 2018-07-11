@@ -809,6 +809,16 @@ class KikBot(Flask):
                         ])]
                     ))
 
+                #
+                # Befehl einer
+                #
+                elif message_body in ["anderer bot"]:
+                    response_messages.append(TextMessage(
+                        to=message.from_user,
+                        chat_id=message.chat_id,
+                        body=u"Es kann nur einen geben! \U0001F608"
+                    ))
+
 
 
                 #
