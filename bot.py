@@ -110,6 +110,19 @@ class KikBot(Flask):
                     self.kik_api.send_messages(response_messages)
                     continue
 
+                #
+                # Dynamische Befehle
+                #
+                if message_body == u"\U00002B05\U0000FE0F":
+                    status_obj = character_persistent_class.get_user_command_status(message.from_user)
+                    if status_obj['status'] == CharacterPersistentClass.STATUS_DYN_MESSAGES:
+                        message_body = status_obj['data']['left'].lower()
+
+                elif message_body == u"\U000027A1\U0000FE0F":
+                    status_obj = character_persistent_class.get_user_command_status(message.from_user)
+                    if status_obj['status'] == CharacterPersistentClass.STATUS_DYN_MESSAGES:
+                        message_body = status_obj['data']['right'].lower()
+
                 message_command = message_body.split(None,1)[0]
 
                 #
@@ -126,50 +139,38 @@ class KikBot(Flask):
 
                         char_id = character_persistent_class.add_char(message_body.split(None, 2)[1][1:].strip(), message.from_user, message.body.split(None, 2)[2].strip())
 
-                        if char_id == 1:
+                        if char_id == CharacterPersistentClass.get_min_char_id():
                             body = "Alles klar! Der erste Charakter für @{} wurde hinzugefügt.".format(selected_user)
-                            show_resp = "Anzeigen @{}".format(selected_user)
-                            del_resp = "Löschen @{}".format(selected_user)
-                            set_pic_resp = "Bild-setzen @{}".format(selected_user)
                         else:
                             body = "Alles klar! Der {}. Charakter für @{} wurde hinzugefügt.".format(char_id, selected_user)
-                            show_resp = "Anzeigen @{} {}".format(selected_user, char_id)
-                            del_resp = "Löschen @{} {}".format(selected_user, char_id)
-                            set_pic_resp = "Bild-setzen @{} {}".format(selected_user, char_id)
 
                         response_messages.append(TextMessage(
                             to=message.from_user,
                             chat_id=message.chat_id,
                             body=body,
                             keyboards=[SuggestedResponseKeyboard(responses=[
-                                TextResponse(show_resp),
-                                TextResponse(set_pic_resp),
-                                TextResponse(del_resp),
+                                self.generate_text_response("Anzeigen", selected_user, char_id, message),
+                                self.generate_text_response("Bild-setzen", selected_user, char_id, message),
+                                self.generate_text_response("Löschen", selected_user, char_id, message, force_username=True),
                                 TextResponse("Liste")
                             ])]
                         ))
                     elif len(message_body.split(None,1)) == 2 and message_body.split(None,1)[1][0] != "@":
                         char_id = character_persistent_class.add_char(message.from_user, message.from_user, message.body.split(None, 1)[1].strip())
 
-                        if char_id == 1:
+                        if char_id == CharacterPersistentClass.get_min_char_id():
                             body = "Alles klar! Dein erster Charakter wurde hinzugefügt."
-                            show_resp = "Anzeigen"
-                            del_resp = "Löschen @{}".format(message.from_user)
-                            set_pic_resp = "Bild-setzen"
                         else:
                             body = "Alles klar! Dein {}. Charakter wurde hinzugefügt.".format(char_id)
-                            show_resp = "Anzeigen {}".format(char_id)
-                            del_resp = "Löschen @{} {}".format(message.from_user, char_id)
-                            set_pic_resp = "Bild-setzen {}".format(char_id)
 
                         response_messages.append(TextMessage(
                             to=message.from_user,
                             chat_id=message.chat_id,
                             body=body,
                             keyboards=[SuggestedResponseKeyboard(responses=[
-                                TextResponse(show_resp),
-                                TextResponse(set_pic_resp),
-                                TextResponse(del_resp),
+                                self.generate_text_response("Anzeigen", message.from_user, char_id, message),
+                                self.generate_text_response("Bild-setzen", message.from_user, char_id, message),
+                                self.generate_text_response("Löschen", message.from_user, char_id, message, force_username=True),
                                 TextResponse("Liste")
                             ])]
                         ))
@@ -203,9 +204,9 @@ class KikBot(Flask):
                             chat_id=message.chat_id,
                             body="Alles klar! Der {}. Charakter für @{} wurde gespeichert.".format(char_id, user_id),
                             keyboards=[SuggestedResponseKeyboard(responses=[
-                                TextResponse("Anzeigen @{} {}".format(user_id, char_id)),
-                                TextResponse("Bild-setzen @{} {}".format(user_id, char_id)),
-                                TextResponse("Letzte-Löschen @{}".format(user_id, char_id)),
+                                self.generate_text_response("Anzeigen", user_id, char_id, message),
+                                self.generate_text_response("Bild-setzen", user_id, char_id, message),
+                                self.generate_text_response("Letzte-Löschen", user_id, char_id, message, force_username=True),
                                 TextResponse("Liste")
                             ])]
                         ))
@@ -220,9 +221,9 @@ class KikBot(Flask):
                             chat_id=message.chat_id,
                             body="Alles klar! Dein {}. Charakter wurde gespeichert.".format(char_id),
                             keyboards=[SuggestedResponseKeyboard(responses=[
-                                TextResponse("Anzeigen {}".format(char_id)),
-                                TextResponse("Bild-setzen {}".format(char_id)),
-                                TextResponse("Letzte-Löschen @{} {}".format(message.from_user, char_id)),
+                                self.generate_text_response("Anzeigen", message.from_user, char_id, message),
+                                self.generate_text_response("Bild-setzen", message.from_user, char_id, message),
+                                self.generate_text_response("Letzte-Löschen", message.from_user, char_id, message, force_username=True),
                                 TextResponse("Liste")
                             ])]
                         ))
@@ -240,9 +241,9 @@ class KikBot(Flask):
                             chat_id=message.chat_id,
                             body="Alles klar! Der erste Charakter für @{} wurde gespeichert.".format(user_id),
                             keyboards=[SuggestedResponseKeyboard(responses=[
-                                TextResponse("Anzeigen @{}".format(user_id)),
-                                TextResponse("Bild-setzen @{}".format(user_id)),
-                                TextResponse("Letzte-Löschen @{}".format(user_id)),
+                                self.generate_text_response("Anzeigen", user_id, None, message),
+                                self.generate_text_response("Bild-setzen", user_id, None, message),
+                                self.generate_text_response("Letzte-Löschen", user_id, None, message, force_username=True),
                                 TextResponse("Liste")
                             ])]
                         ))
@@ -253,9 +254,9 @@ class KikBot(Flask):
                             chat_id=message.chat_id,
                             body="Alles klar! Dein erster Charakter wurde gespeichert.",
                             keyboards=[SuggestedResponseKeyboard(responses=[
-                                TextResponse("Anzeigen"),
-                                TextResponse("Bild-setzen"),
-                                TextResponse("Letzte-Löschen @{}".format(message.from_user)),
+                                self.generate_text_response("Anzeigen", message.from_user, None, message),
+                                self.generate_text_response("Bild-setzen", message.from_user, None, message),
+                                self.generate_text_response("Letzte-Löschen", message.from_user, None, message, force_username=True),
                                 TextResponse("Liste")
                             ])]
                         ))
@@ -367,7 +368,7 @@ class KikBot(Flask):
                         resp = []
 
                         for char in chars:
-                            resp.append(TextResponse("Anzeigen @{} {}".format(char['user_id'], char['char_id'])))
+                            resp.append(self.generate_text_response("Anzeigen", char['user_id'], char['char_id'], message))
 
                         resp.append(TextResponse("Liste"))
 
@@ -392,7 +393,9 @@ class KikBot(Flask):
                             keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Liste")])]
                         ))
                     else:
-                        response_messages += self.create_char_messages(character_persistent_class, selected_user, char_id, char_data, message)
+                        (char_resp_msg, user_command_status, user_command_status_data) = self.create_char_messages(character_persistent_class, selected_user,
+                                                                       char_id, char_data, message, user_command_status, user_command_status_data)
+                        response_messages += char_resp_msg
 
 
                 #
@@ -411,7 +414,7 @@ class KikBot(Flask):
                             character_persistent_class.remove_char(selected_user, message.from_user, char_id)
 
                             if char_id is not None:
-                                body = "Du hast erfolgreich deinen Charakter {} gelöscht".format(char_id)
+                                body = "Du hast erfolgreich deinen {}. Charakter gelöscht".format(char_id)
                             else:
                                 body = "Du hast erfolgreich deinen Charakter gelöscht."
 
@@ -426,9 +429,9 @@ class KikBot(Flask):
                             character_persistent_class.remove_char(selected_user, message.from_user, char_id)
 
                             if char_id is not None:
-                                body = "Du hast erfolgreich den Charakter {} von @{} gelöscht.".format(char_id, selected_user)
+                                body = "Du hast erfolgreich den {}. Charakter von @{} gelöscht.".format(char_id, selected_user)
                             else:
-                                body = "Du hast erfolgreich den Charakter von @{} gelöscht.".format(selected_user)
+                                body = "Du hast erfolgreich den ersten Charakter von @{} gelöscht.".format(selected_user)
 
                             response_messages.append(TextMessage(
                                 to=message.from_user,
@@ -471,16 +474,17 @@ class KikBot(Flask):
 
                             if char_id is not None:
                                 body = "Du hast erfolgreich die letzte Änderung am Charakter {} gelöscht.".format(char_id)
-                                show_resp = "Anzeigen {}".format(char_id)
                             else:
                                 body = "Du hast erfolgreich die letzte Änderung gelöscht."
-                                show_resp = "Anzeigen"
 
                             response_messages.append(TextMessage(
                                 to=message.from_user,
                                 chat_id=message.chat_id,
                                 body=body,
-                                keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Liste"), TextResponse(show_resp)])]
+                                keyboards=[SuggestedResponseKeyboard(responses=[
+                                    TextResponse("Liste"),
+                                    self.generate_text_response("Anzeigen", selected_user, char_id, message)
+                                ])]
                             ))
 
                         elif message.from_user in [x.strip() for x in default_config.get("Admins", "admin1").split(',')]:
@@ -488,16 +492,17 @@ class KikBot(Flask):
 
                             if char_id is not None:
                                 body = "Du hast erfolgreich die letzte Änderung des Charakters {} von @{} gelöscht.".format(char_id, selected_user)
-                                show_resp = "Anzeigen @{} {}".format(selected_user, char_id)
                             else:
                                 body = "Du hast erfolgreich die letzte Änderung des Charakters von @{} gelöscht.".format(selected_user)
-                                show_resp = "Anzeigen @{}".format(selected_user)
 
                             response_messages.append(TextMessage(
                                 to=message.from_user,
                                 chat_id=message.chat_id,
                                 body=body,
-                                keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Liste"), TextResponse(show_resp)])]
+                                keyboards=[SuggestedResponseKeyboard(responses=[
+                                    TextResponse("Liste"),
+                                    self.generate_text_response("Anzeigen", selected_user, char_id, message)
+                                ])]
                             ))
 
                         else:
@@ -539,13 +544,15 @@ class KikBot(Flask):
                             ))
 
                         elif len(chars) == 1:
-                            response_messages += self.create_char_messages(character_persistent_class, chars[0]['user_id'], chars[0]['char_id'], chars[0], message)
+                            (char_resp_msg, user_command_status, user_command_status_data) = self.create_char_messages(character_persistent_class, chars[0]['user_id'],
+                                                                           chars[0]['char_id'], chars[0], message, user_command_status, user_command_status_data)
+                            response_messages += char_resp_msg
 
                         else:
                             resp = []
 
                             for char in chars:
-                                resp.append(TextResponse("Anzeigen @{} {}".format(char['user_id'], char['char_id'])))
+                                resp.append(self.generate_text_response("Anzeigen", char['user_id'], char['char_id'], message))
 
                             resp.append(TextResponse("Liste"))
                             response_messages.append(TextMessage(
@@ -762,7 +769,8 @@ class KikBot(Flask):
                     response_messages.append(TextMessage(
                         to=message.from_user,
                         chat_id=message.chat_id,
-                        body=("Folgende Befehle sind möglich:\n"
+                        body=(
+                            "Folgende Befehle sind möglich:\n"
                             "Hilfe\n"
                             "Regeln\n"
                             "Vorlage\n"
@@ -780,7 +788,6 @@ class KikBot(Flask):
                             "Der Parameter <char_id> ist nur relevant, wenn du mehr als einen Charakter speichern möchtest. Der erste Charakter "
                             "hat immer die Id 1. Legst du einen weiteren an, erhält dieser die Id 2 usw.\n\n"
                             "Der Bot kann nicht nur innerhalb einer Gruppe verwendet werden; man kann ihn auch direkt anschreiben (@{}) oder in PMs verwenden.".format(bot_username)
-
                         ),
                         keyboards=[SuggestedResponseKeyboard(responses=[
                             TextResponse("Regeln"),
@@ -794,7 +801,8 @@ class KikBot(Flask):
                     response_messages.append(TextMessage(
                         to=message.from_user,
                         chat_id=message.chat_id,
-                        body=("Folgende Kurz-Befehle sind möglich:\n"
+                        body=(
+                            "Folgende Kurz-Befehle sind möglich:\n"
                             "help\n"
                             "rules\n"
                             "template\n"
@@ -819,7 +827,8 @@ class KikBot(Flask):
                     response_messages.append(TextMessage(
                         to=message.from_user,
                         chat_id=message.chat_id,
-                        body=("Folgende Admin-Befehle sind möglich:\n"
+                        body=(
+                            "Folgende Admin-Befehle sind möglich:\n"
                             "auth/Berechtigen <username>\n"
                             "unauth/Entmachten <username>\n"
                             "del/Löschen <username> (<char_id>)\n"
@@ -831,7 +840,8 @@ class KikBot(Flask):
                     response_messages.append(TextMessage(
                         to=message.from_user,
                         chat_id=message.chat_id,
-                        body=("Weitere Beispiele\n"
+                        body=(
+                            "Weitere Beispiele\n"
                             "Alle Beispiele sind in einzelnen Abschnitten mittels ----- getrennt.\n\n"
                             "------\n"
                             "@{} Hinzufügen @{}\n".format(bot_username, message.from_user) +
@@ -906,17 +916,26 @@ class KikBot(Flask):
                         body="Sorry {}, mit diesem Bild kann ich leider nichts anfangen.".format(user.first_name),
                         keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
                     ))
+
                 else:
-
-                    character_persistent_class.set_char_pic(status_obj['data']['user_id'], message.from_user, message.pic_url, status_obj['data']['char_id'])
-
-                    show_resp = self.generate_text_response(message, status_obj['data']['user_id'], status_obj['data']['char_id'], "Anzeigen")
+                    success = character_persistent_class.set_char_pic(status_obj['data']['user_id'], message.from_user, message.pic_url, status_obj['data']['char_id'])
+                    if success is True:
+                        body = "Alles klar! Das Bild wurde gesetzt."
+                        show_resp = self.generate_text_response("Anzeigen", status_obj['data']['user_id'], status_obj['data']['char_id'], message)
+                    else:
+                        body = "Beim hochladen ist ein Fehler aufgetreten. Bitte versuche es erneut."
+                        show_resp = self.generate_text_response("Bild-setzen", status_obj['data']['user_id'], status_obj['data']['char_id'], message)
+                        user_command_status = status_obj['status']
+                        user_command_status_data = status_obj['data']
 
                     response_messages.append(TextMessage(
                         to=message.from_user,
                         chat_id=message.chat_id,
-                        body="Alles klar! Das Bild wurde gesetzt.",
-                        keyboards=[SuggestedResponseKeyboard(responses=[TextResponse(show_resp), TextResponse("Liste")])]
+                        body=body,
+                        keyboards=[SuggestedResponseKeyboard(responses=[
+                            show_resp,
+                            TextResponse("Liste")
+                        ])]
                     ))
 
             # If its not a text message, give them another chance to use the suggested responses
@@ -939,20 +958,21 @@ class KikBot(Flask):
         return Response(status=200)
 
     @staticmethod
-    def generate_text_response(message, user_id, char_id, command, force_username=False):
+    def generate_text_response(command, user_id, char_id, message, force_username=False):
+        return TextResponse(KikBot.generate_text(command, user_id, char_id, message, force_username=force_username))
+
+    @staticmethod
+    def generate_text(command, user_id, char_id, message, force_username=False):
         show_user = message.from_user != user_id or force_username is True
-        show_char_id = char_id <= CharacterPersistentClass.get_min_char_id() and char_id is not None
+        show_char_id = char_id is not None and char_id > CharacterPersistentClass.get_min_char_id()
 
         if show_user and show_char_id:
-            text = "{} @{} {}".format(command, user_id, char_id)
-        elif show_user:
-            text = "{} @{}".format(command, user_id)
-        elif show_char_id:
-            text = "{} {}".format(command, char_id)
-        else:
-            text = command
-
-        return TextResponse(text)
+            return "{} @{} {}".format(command, user_id, char_id)
+        if show_user:
+            return "{} @{}".format(command, user_id)
+        if show_char_id:
+            return "{} {}".format(command, char_id)
+        return command
 
     @staticmethod
     def check_auth(persistent_class, message):
@@ -966,25 +986,32 @@ class KikBot(Flask):
         return True
 
     @staticmethod
-    def create_char_messages(character_persistent_class, selected_user, char_id, char_data, message):
+    def create_char_messages(character_persistent_class, selected_user, char_id, char_data, message, user_command_status, user_command_status_data):
         response_messages = []
         keyboard_responses = []
 
         max_char_id = character_persistent_class.get_max_char_id(selected_user)
+        if char_id is None:
+            char_id = CharacterPersistentClass.get_min_char_id()
+
         if max_char_id > CharacterPersistentClass.get_min_char_id():
-            if char_id is not None and char_id > 1:
-                keyboard_responses.append(TextResponse("Anzeigen @{} {}".format(selected_user, char_id - 1)))
-            if char_id is None or char_id < max_char_id:
-                next_char_id = CharacterPersistentClass.get_min_char_id() + 1 if char_id is None else char_id + 1
-                keyboard_responses.append(TextResponse("Anzeigen @{} {}".format(selected_user, next_char_id)))
+            dyn_message_data = {}
+            if char_id > CharacterPersistentClass.get_min_char_id():
+                dyn_message_data['left'] = KikBot.generate_text("Anzeigen", selected_user, char_id - 1, message)
+                keyboard_responses.append(TextResponse(u"\U00002B05\U0000FE0F"))
+            if char_id < max_char_id:
+                dyn_message_data['right'] = KikBot.generate_text("Anzeigen", selected_user, char_id + 1, message)
+                keyboard_responses.append(TextResponse(u"\U000027A1\U0000FE0F"))
+            if dyn_message_data != {}:
+                user_command_status = CharacterPersistentClass.STATUS_DYN_MESSAGES
+                user_command_status_data = dyn_message_data
 
         if selected_user == message.from_user:
-            keyboard_responses.append(TextResponse("Bild-setzen {}".format(char_id)))
+            keyboard_responses.append(KikBot.generate_text_response("Bild-setzen", selected_user, char_id, message))
 
         keyboard_responses.append(TextResponse("Liste"))
 
         pic_url = character_persistent_class.get_char_pic_url(selected_user, char_id)
-        print([pic_url])
 
         if pic_url is not None:
             response_messages.append(PictureMessage(
@@ -1018,13 +1045,14 @@ class KikBot(Flask):
             body=new_body,
             keyboards=[SuggestedResponseKeyboard(responses=keyboard_responses)]
         ))
-        return response_messages
+        return (response_messages, user_command_status, user_command_status_data)
 
 
 class CharacterPersistentClass:
 
     STATUS_NONE = 0
     STATUS_SET_PICTURE = 1
+    STATUS_DYN_MESSAGES = 2
 
     def __init__(self):
         self.connection = None
@@ -1184,8 +1212,6 @@ class CharacterPersistentClass:
 
         if char_id is None:
             char_id = self.get_min_char_id()
-
-        print([user_id, char_id])
 
         self.cursor.execute((
             "SELECT picture_filename "
