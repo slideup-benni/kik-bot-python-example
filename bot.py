@@ -1439,4 +1439,4 @@ if __name__ == "__main__":
     # the configuration, and not every time the bot starts.
     kik.set_configuration(Configuration(webhook="{}:{}/incoming".format(default_config.get("RemoteHostIP", "www.example.com"), default_config.get("RemotePort", "8080"))))
     app = KikBot(kik, __name__)
-    app.run(threaded=True, port=int(default_config.get("LocalPort", 8080)), host=default_config.get("LocalIP", "0.0.0.0"), debug=True)
+    app.run(threaded=True, port=int(default_config.get("LocalPort", 8080)), host=default_config.get("LocalIP", "0.0.0.0"), debug=False)
