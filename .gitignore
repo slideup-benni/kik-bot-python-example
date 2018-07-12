@@ -2,7 +2,9 @@
 daemon/log/main/*
 daemon/log/supervise
 daemon/supervise
+pictures/*
 .idea
 config.ini
 
 !daemon/log/main/.gitkeep
+!pictures/.gitkeep

@@ -22,11 +22,14 @@ language governing permissions and limitations under the License.
 
 """
 import argparse
+import json
 import re
 from configparser import SectionProxy
+from mimetypes import guess_extension
 from pathlib import Path
 
-from flask import Flask, request, Response
+import requests
+from flask import Flask, request, Response, send_from_directory
 from kik import KikApi, Configuration
 from kik.messages import messages_from_json, TextMessage, PictureMessage, \
     SuggestedResponseKeyboard, TextResponse, StartChattingMessage
@@ -45,6 +48,11 @@ class KikBot(Flask):
                                      instance_path, instance_relative_config, root_path)
 
         self.route("/incoming", methods=["POST"])(self.incoming)
+        self.route("/picture/<path:path>", methods=["GET"])(self.picture)
+
+    def picture(self, path):
+        picture_path = default_config.get("PicturePath", "{home}/pictures").format(home=str(Path.home()))
+        return send_from_directory(picture_path, path)
 
     def incoming(self):
         """Handle incoming messages to the bot. All requests are authenticated using the signature in
@@ -63,11 +71,14 @@ class KikBot(Flask):
         #reread config
         global config
         global default_config
-        config.read(args.config.name)
+        config.read(args.config)
         default_config = config['DEFAULT']  # type: SectionProxy
 
         for message in messages:
+            character_persistent_class = CharacterPersistentClass()
             user = self.kik_api.get_user(message.from_user)
+            user_command_status = CharacterPersistentClass.STATUS_NONE
+            user_command_status_data = None
             # Check if its the user's first message. Start Chatting messages are sent only once.
             if isinstance(message, StartChattingMessage):
 
@@ -107,7 +118,6 @@ class KikBot(Flask):
                 if message_command in ["hinzufügen", "add"]:
                     if len(message_body.split(None,2)) == 3 and message_body.split(None,2)[1][0] == "@" and message_body.split(None,2)[2].strip() != "":
                         selected_user = message_body.split(None,2)[1][1:]
-                        character_persistent_class = CharacterPersistentClass()
 
                         auth = self.check_auth(character_persistent_class, message)
                         if selected_user != message.from_user and auth is not True:
@@ -120,10 +130,12 @@ class KikBot(Flask):
                             body = "Alles klar! Der erste Charakter für @{} wurde hinzugefügt.".format(selected_user)
                             show_resp = "Anzeigen @{}".format(selected_user)
                             del_resp = "Löschen @{}".format(selected_user)
+                            set_pic_resp = "Bild-setzen @{}".format(selected_user)
                         else:
                             body = "Alles klar! Der {}. Charakter für @{} wurde hinzugefügt.".format(char_id, selected_user)
                             show_resp = "Anzeigen @{} {}".format(selected_user, char_id)
                             del_resp = "Löschen @{} {}".format(selected_user, char_id)
+                            set_pic_resp = "Bild-setzen @{} {}".format(selected_user, char_id)
 
                         response_messages.append(TextMessage(
                             to=message.from_user,
@@ -131,21 +143,24 @@ class KikBot(Flask):
                             body=body,
                             keyboards=[SuggestedResponseKeyboard(responses=[
                                 TextResponse(show_resp),
+                                TextResponse(set_pic_resp),
                                 TextResponse(del_resp),
                                 TextResponse("Liste")
                             ])]
                         ))
                     elif len(message_body.split(None,1)) == 2 and message_body.split(None,1)[1][0] != "@":
-                        char_id = CharacterPersistentClass().add_char(message.from_user, message.from_user, message.body.split(None, 1)[1].strip())
+                        char_id = character_persistent_class.add_char(message.from_user, message.from_user, message.body.split(None, 1)[1].strip())
 
                         if char_id == 1:
                             body = "Alles klar! Dein erster Charakter wurde hinzugefügt."
                             show_resp = "Anzeigen"
                             del_resp = "Löschen @{}".format(message.from_user)
+                            set_pic_resp = "Bild-setzen"
                         else:
                             body = "Alles klar! Dein {}. Charakter wurde hinzugefügt.".format(char_id)
                             show_resp = "Anzeigen {}".format(char_id)
                             del_resp = "Löschen @{} {}".format(message.from_user, char_id)
+                            set_pic_resp = "Bild-setzen {}".format(char_id)
 
                         response_messages.append(TextMessage(
                             to=message.from_user,
@@ -153,6 +168,7 @@ class KikBot(Flask):
                             body=body,
                             keyboards=[SuggestedResponseKeyboard(responses=[
                                 TextResponse(show_resp),
+                                TextResponse(set_pic_resp),
                                 TextResponse(del_resp),
                                 TextResponse("Liste")
                             ])]
@@ -176,8 +192,6 @@ class KikBot(Flask):
                         char_id = int(message_body.split(None, 3)[2])
                         text = message.body.split(None, 3)[3].strip()
 
-                        character_persistent_class = CharacterPersistentClass()
-
                         auth = self.check_auth(character_persistent_class, message)
                         if user_id != message.from_user and auth is not True:
                             self.kik_api.send_messages([auth])
@@ -190,6 +204,7 @@ class KikBot(Flask):
                             body="Alles klar! Der {}. Charakter für @{} wurde gespeichert.".format(char_id, user_id),
                             keyboards=[SuggestedResponseKeyboard(responses=[
                                 TextResponse("Anzeigen @{} {}".format(user_id, char_id)),
+                                TextResponse("Bild-setzen @{} {}".format(user_id, char_id)),
                                 TextResponse("Letzte-Löschen @{}".format(user_id, char_id)),
                                 TextResponse("Liste")
                             ])]
@@ -199,21 +214,20 @@ class KikBot(Flask):
                         char_id = int(message_body.split(None, 2)[1])
                         text = message.body.split(None, 2)[2].strip()
 
-                        CharacterPersistentClass().change_char(message.from_user, message.from_user, text, char_id)
+                        character_persistent_class.change_char(message.from_user, message.from_user, text, char_id)
                         response_messages.append(TextMessage(
                             to=message.from_user,
                             chat_id=message.chat_id,
                             body="Alles klar! Dein {}. Charakter wurde gespeichert.".format(char_id),
                             keyboards=[SuggestedResponseKeyboard(responses=[
                                 TextResponse("Anzeigen {}".format(char_id)),
+                                TextResponse("Bild-setzen {}".format(char_id)),
                                 TextResponse("Letzte-Löschen @{} {}".format(message.from_user, char_id)),
                                 TextResponse("Liste")
                             ])]
                         ))
                     elif len(message_body.split(None, 2)) == 3 and message_body.split(None, 2)[1][0] == "@" and message_body.split(None, 2)[2].strip() != "":
                         user_id = message_body.split(None, 2)[1][1:].strip()
-
-                        character_persistent_class = CharacterPersistentClass()
 
                         auth = self.check_auth(character_persistent_class, message)
                         if user_id != message.from_user and auth is not True:
@@ -227,18 +241,20 @@ class KikBot(Flask):
                             body="Alles klar! Der erste Charakter für @{} wurde gespeichert.".format(user_id),
                             keyboards=[SuggestedResponseKeyboard(responses=[
                                 TextResponse("Anzeigen @{}".format(user_id)),
+                                TextResponse("Bild-setzen @{}".format(user_id)),
                                 TextResponse("Letzte-Löschen @{}".format(user_id)),
                                 TextResponse("Liste")
                             ])]
                         ))
                     elif len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1][0] != "@":
-                        CharacterPersistentClass().change_char(message.from_user, message.from_user, message.body.split(None, 1)[1].strip())
+                        character_persistent_class.change_char(message.from_user, message.from_user, message.body.split(None, 1)[1].strip())
                         response_messages.append(TextMessage(
                             to=message.from_user,
                             chat_id=message.chat_id,
                             body="Alles klar! Dein erster Charakter wurde gespeichert.",
                             keyboards=[SuggestedResponseKeyboard(responses=[
                                 TextResponse("Anzeigen"),
+                                TextResponse("Bild-setzen"),
                                 TextResponse("Letzte-Löschen @{}".format(message.from_user)),
                                 TextResponse("Liste")
                             ])]
@@ -252,11 +268,56 @@ class KikBot(Flask):
                         ))
 
                 #
+                # Befehl Bild setzen
+                #
+                elif message_command in ["bild-setzen", "set-pic"]:
+
+                    response = None
+
+                    if len(message_body.split(None, 2)) == 3 and message_body.split(None, 2)[1][0] == "@" \
+                            and message_body.split(None, 2)[2].isdigit():
+
+                        user_id = message_body.split(None, 2)[1][1:].strip()
+                        char_id = int(message_body.split(None, 2)[2])
+
+                        auth = self.check_auth(character_persistent_class, message)
+                        if user_id != message.from_user and auth is not True:
+                            self.kik_api.send_messages([auth])
+                            continue
+
+                    elif len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1].isdigit():
+
+                        user_id = message.from_user
+                        char_id = int(message_body.split(None, 1)[1])
+
+                    elif len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1][0] == "@":
+                        user_id = message_body.split(None, 1)[1][1:].strip()
+                        char_id = None
+
+                        auth = self.check_auth(character_persistent_class, message)
+                        if user_id != message.from_user and auth is not True:
+                            self.kik_api.send_messages([auth])
+                            continue
+                    else:
+                        user_id = message.from_user
+                        char_id = None
+
+                    user_command_status = CharacterPersistentClass.STATUS_SET_PICTURE
+                    user_command_status_data = {
+                        'user_id': user_id,
+                        'char_id': char_id
+                    }
+
+                    response_messages.append(TextMessage(
+                        to=message.from_user,
+                        chat_id=message.chat_id,
+                        body="Alles Klar! Bitte schicke jetzt das Bild direkt an @{}".format(bot_username)
+                    ))
+
+                #
                 # Befehl Anzeigen
                 #
                 elif message_command in ["anzeigen", "show"]:
-                    character_persistent_class = CharacterPersistentClass()
-
                     char_data = None
                     chars = None
                     char_name = None
@@ -294,7 +355,6 @@ class KikBot(Flask):
 
                     if chars is None and char_data is None and selected_user is not None:
                         char_data = character_persistent_class.get_char(selected_user, char_id)
-                        print(char_data)
 
                     if chars is not None and len(chars) == 0 and char_name is not None:
                         response_messages.append(TextMessage(
@@ -348,7 +408,7 @@ class KikBot(Flask):
                             selected_user = message_body.split(None, 1)[1][1:].strip()
 
                         if selected_user == message.from_user:
-                            CharacterPersistentClass().remove_char(selected_user, message.from_user, char_id)
+                            character_persistent_class.remove_char(selected_user, message.from_user, char_id)
 
                             if char_id is not None:
                                 body = "Du hast erfolgreich deinen Charakter {} gelöscht".format(char_id)
@@ -363,7 +423,7 @@ class KikBot(Flask):
                             ))
 
                         elif message.from_user in [x.strip() for x in default_config.get("Admins", "admin1").split(',')]:
-                            CharacterPersistentClass().remove_char(selected_user, message.from_user, char_id)
+                            character_persistent_class.remove_char(selected_user, message.from_user, char_id)
 
                             if char_id is not None:
                                 body = "Du hast erfolgreich den Charakter {} von @{} gelöscht.".format(char_id, selected_user)
@@ -407,7 +467,7 @@ class KikBot(Flask):
 
 
                         if selected_user == message.from_user:
-                            CharacterPersistentClass().remove_last_char_change(selected_user, message.from_user)
+                            character_persistent_class.remove_last_char_change(selected_user, message.from_user)
 
                             if char_id is not None:
                                 body = "Du hast erfolgreich die letzte Änderung am Charakter {} gelöscht.".format(char_id)
@@ -424,7 +484,7 @@ class KikBot(Flask):
                             ))
 
                         elif message.from_user in [x.strip() for x in default_config.get("Admins", "admin1").split(',')]:
-                            CharacterPersistentClass().remove_last_char_change(selected_user, message.from_user)
+                            character_persistent_class.remove_last_char_change(selected_user, message.from_user)
 
                             if char_id is not None:
                                 body = "Du hast erfolgreich die letzte Änderung des Charakters {} von @{} gelöscht.".format(char_id, selected_user)
@@ -461,7 +521,6 @@ class KikBot(Flask):
                 #
                 elif message_command in ["suche", "search"]:
                     if len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1].strip() != "":
-                        character_persistent_class = CharacterPersistentClass()
                         query = message_body.split(None, 1)[1].strip()
 
                         auth = self.check_auth(character_persistent_class, message)
@@ -513,7 +572,7 @@ class KikBot(Flask):
                 elif message_command in ["auth", "berechtigen", "authorize", "authorise"]:
                     if len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1][0] == "@":
                         selected_user = message_body.split(None, 1)[1][1:].strip()
-                        result = CharacterPersistentClass().auth_user(selected_user, message.from_user)
+                        result = character_persistent_class.auth_user(selected_user, message.from_user)
 
                         if result is True:
                             response_messages.append(TextMessage(
@@ -546,7 +605,7 @@ class KikBot(Flask):
                 elif message_command in ["unauth", "entmachten", "unauthorize", "unauthorise"]:
                     if len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1][0] == "@":
                         selected_user = message_body.split(None, 1)[1][1:].strip()
-                        result = CharacterPersistentClass().unauth_user(selected_user, message.from_user)
+                        result = character_persistent_class.unauth_user(selected_user, message.from_user)
 
                         if result is True:
                             response_messages.append(TextMessage(
@@ -576,9 +635,6 @@ class KikBot(Flask):
                 # Befehl Liste
                 #
                 elif message_command in ["liste", "list"]:
-
-                    character_persistent_class = CharacterPersistentClass()
-
                     auth = self.check_auth(character_persistent_class, message)
                     if auth is not True:
                         self.kik_api.send_messages([auth])
@@ -702,7 +758,7 @@ class KikBot(Flask):
                 #
                 # Befehl Hilfe
                 #
-                elif message_body in ["hilfe", "hilfe!", "help"]:
+                elif message_body in ["hilfe", "hilfe!", "help", "h", "?"]:
                     response_messages.append(TextMessage(
                         to=message.from_user,
                         chat_id=message.chat_id,
@@ -712,6 +768,7 @@ class KikBot(Flask):
                             "Vorlage\n"
                             "Hinzufügen (<username>) <text>\n"
                             "Ändern (<username>) (<char_id>) <text>\n"
+                            "Bild-setzen (<username>) (<char_id>)\n"
                             "Anzeigen (<username>) (<char_id>|<char_name>)\n"
                             "Löschen <eigener_username> (<char_id>)\n"
                             "Letzte-Löschen <eigener_username> (<char_id>)\n"
@@ -743,6 +800,7 @@ class KikBot(Flask):
                             "template\n"
                             "add (<username>) <text>\n"
                             "change (<username>) (<char_id>) <text>\n"
+                            "set-pic (<username>) (<char_id>)\n"
                             "show (<username>) (<char_id>|<char_name>)\n"
                             "del <eigener_username> (<char_id>)\n"
                             "del-last <eigener_username> (<char_id>)\n"
@@ -753,7 +811,7 @@ class KikBot(Flask):
                         keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("rules"), TextResponse("Weitere-Beispiele"), TextResponse("Template")])]
                     ))
                 elif message_body in ["admin-hilfe", "admin-help"]:
-                    auth = self.check_auth(CharacterPersistentClass(), message)
+                    auth = self.check_auth(character_persistent_class, message)
                     if auth is not True:
                         self.kik_api.send_messages([auth])
                         continue
@@ -839,6 +897,28 @@ class KikBot(Flask):
                         body="Sorry {}, ich habe dich nicht verstanden.".format(user.first_name),
                         keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
                     ))
+            elif isinstance(message, PictureMessage):
+                status_obj = character_persistent_class.get_user_command_status(message.from_user)
+                if status_obj is None or status_obj['status'] != CharacterPersistentClass.STATUS_SET_PICTURE:
+                    response_messages.append(TextMessage(
+                        to=message.from_user,
+                        chat_id=message.chat_id,
+                        body="Sorry {}, mit diesem Bild kann ich leider nichts anfangen.".format(user.first_name),
+                        keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
+                    ))
+                else:
+
+                    character_persistent_class.set_char_pic(status_obj['data']['user_id'], message.from_user, message.pic_url, status_obj['data']['char_id'])
+
+                    show_resp = self.generate_text_response(message, status_obj['data']['user_id'], status_obj['data']['char_id'], "Anzeigen")
+
+                    response_messages.append(TextMessage(
+                        to=message.from_user,
+                        chat_id=message.chat_id,
+                        body="Alles klar! Das Bild wurde gesetzt.",
+                        keyboards=[SuggestedResponseKeyboard(responses=[TextResponse(show_resp), TextResponse("Liste")])]
+                    ))
+
             # If its not a text message, give them another chance to use the suggested responses
             else:
 
@@ -852,9 +932,27 @@ class KikBot(Flask):
             # We're sending a batch of messages. We can send up to 25 messages at a time (with a limit of
             # 5 messages per user).
 
+            character_persistent_class.update_user_command_status(message.from_user, user_command_status, user_command_status_data)
+            del character_persistent_class
             self.kik_api.send_messages(response_messages)
 
         return Response(status=200)
+
+    @staticmethod
+    def generate_text_response(message, user_id, char_id, command, force_username=False):
+        show_user = message.from_user != user_id or force_username is True
+        show_char_id = char_id <= CharacterPersistentClass.get_min_char_id() and char_id is not None
+
+        if show_user and show_char_id:
+            text = "{} @{} {}".format(command, user_id, char_id)
+        elif show_user:
+            text = "{} @{}".format(command, user_id)
+        elif show_char_id:
+            text = "{} {}".format(command, char_id)
+        else:
+            text = command
+
+        return TextResponse(text)
 
     @staticmethod
     def check_auth(persistent_class, message):
@@ -880,7 +978,21 @@ class KikBot(Flask):
                 next_char_id = CharacterPersistentClass.get_min_char_id() + 1 if char_id is None else char_id + 1
                 keyboard_responses.append(TextResponse("Anzeigen @{} {}".format(selected_user, next_char_id)))
 
+        if selected_user == message.from_user:
+            keyboard_responses.append(TextResponse("Bild-setzen {}".format(char_id)))
+
         keyboard_responses.append(TextResponse("Liste"))
+
+        pic_url = character_persistent_class.get_char_pic_url(selected_user, char_id)
+        print([pic_url])
+
+        if pic_url is not None:
+            response_messages.append(PictureMessage(
+                to=message.from_user,
+                chat_id=message.chat_id,
+                pic_url=pic_url,
+                #keyboards=[SuggestedResponseKeyboard(responses=keyboard_responses)]
+            ))
 
         body = "{}\n\n--- erstellt von @{} am {}".format(char_data['text'], char_data['creator_id'],
                                                          datetime.datetime.fromtimestamp(char_data['created']).strftime('%Y-%m-%d %H:%M:%S'))
@@ -911,6 +1023,9 @@ class KikBot(Flask):
 
 class CharacterPersistentClass:
 
+    STATUS_NONE = 0
+    STATUS_SET_PICTURE = 1
+
     def __init__(self):
         self.connection = None
         self.cursor = None
@@ -921,9 +1036,10 @@ class CharacterPersistentClass:
             self.connection.close()
 
     def connect_database(self):
-        self.connection = sqlite3.connect(database_path)
-        self.connection.row_factory = sqlite3.Row
-        self.cursor = self.connection.cursor()
+        if self.connection is None:
+            self.connection = sqlite3.connect(database_path)
+            self.connection.row_factory = sqlite3.Row
+            self.cursor = self.connection.cursor()
 
     @staticmethod
     def get_min_char_id():
@@ -963,6 +1079,51 @@ class CharacterPersistentClass:
             "(user_id, char_id, text, creator_id, created) "
             "VALUES (?, ?, ?, ?, ?)"
         ), data)
+
+    def set_char_pic(self, user_id, creator_id, pic_url, char_id=None):
+        self.connect_database()
+
+        timestamp = int(time.time())
+
+        if char_id is None:
+            char_id = self.get_min_char_id()
+
+        picture_path = default_config.get("PicturePath", "{home}/pictures").format(home=str(Path.home()))
+        file_wo_ext = "{}/{}-{}-{}-{}".format(picture_path, user_id, creator_id, char_id, timestamp)
+        file_tmp = file_wo_ext + ".tmp"
+        with open(file_tmp, 'wb') as handle:
+            response = requests.get(pic_url, stream=True)
+
+            for block in response.iter_content(1024):
+                if not block:
+                    break
+
+                handle.write(block)
+
+        handle.close()
+
+        if response.status_code != 200:
+            os.remove(file_tmp)
+            return False
+
+        try:
+            ext = guess_extension(response.headers['content-type'].split()[0].rstrip(";"))
+        except KeyError:
+            ext = ".jpg"
+
+        if ext == ".jpe":
+            ext = ".jpg"
+
+        os.rename(file_tmp, file_wo_ext + ext)
+
+        data = (user_id, char_id, file_wo_ext + ext, creator_id, int(time.time()))
+        self.cursor.execute((
+            "INSERT INTO character_pictures "
+            "(user_id, char_id, picture_filename, creator_id, created) "
+            "VALUES (?, ?, ?, ?, ?)"
+        ), data)
+
+        return True
 
     def remove_char(self, user_id, deletor_id, char_id=None):
         self.connect_database()
@@ -1015,8 +1176,34 @@ class CharacterPersistentClass:
             "ORDER BY created DESC "
             "LIMIT 1"
         ), [user_id, char_id])
-        char_data = self.cursor.fetchone()
-        return char_data
+
+        return self.cursor.fetchone()
+
+    def get_char_pic_url(self, user_id, char_id):
+        self.connect_database()
+
+        if char_id is None:
+            char_id = self.get_min_char_id()
+
+        print([user_id, char_id])
+
+        self.cursor.execute((
+            "SELECT picture_filename "
+            "FROM  character_pictures "
+            "WHERE user_id LIKE ? AND char_id=? AND deleted IS NULL "
+            "ORDER BY created DESC "
+            "LIMIT 1"
+        ), [user_id, char_id])
+
+        pic_data = self.cursor.fetchone()
+        if pic_data is None:
+            return None
+
+        return "{}:{}/picture/{}".format(
+            default_config.get("RemoteHostIP", "www.example.com"),
+            default_config.get("RemotePort", "8080"),
+            os.path.basename(pic_data['picture_filename'])
+        )
 
     def get_all_user_chars(self, user_id):
         self.connect_database()
@@ -1133,6 +1320,50 @@ class CharacterPersistentClass:
 
         return chars
 
+    def update_user_command_status(self, user_id, status, status_data=None):
+        self.connect_database()
+
+        status_obj = {
+            'status': status,
+            'data': status_data
+        }
+
+        self.cursor.execute((
+            "SELECT user_id, status "
+            "FROM user_command_status "
+            "WHERE user_id LIKE ? "
+            "LIMIT 1"
+        ), [user_id])
+
+        if self.cursor.fetchone() is None:
+            self.cursor.execute((
+                "INSERT INTO user_command_status "
+                "(user_id, status, updated) "
+                "VALUES (?, ?, ?) "
+            ), [user_id, json.dumps(status_obj), int(time.time())])
+        else:
+            self.cursor.execute((
+                "UPDATE user_command_status "
+                "SET status = ?, updated = ? "
+                "WHERE user_id LIKE ? "
+            ), [json.dumps(status_obj), int(time.time()), user_id])
+
+    def get_user_command_status(self, user_id):
+        self.connect_database()
+
+        self.cursor.execute((
+            "SELECT status "
+            "FROM user_command_status "
+            "WHERE user_id LIKE ? "
+            "LIMIT 1"
+        ), [user_id])
+
+        status_data = self.cursor.fetchone()
+        if status_data is None:
+            return None
+        else:
+            return json.loads(status_data['status'])
+
 
 def create_database(database_path):
     connection = sqlite3.connect(database_path)
@@ -1150,6 +1381,18 @@ def create_database(database_path):
         "); "
     ))
     cursor.execute((
+        "CREATE TABLE character_pictures ("
+        "    id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "    user_id TEXT NOT NULL,"
+        "    char_id INTEGER DEFAULT 1,"
+        "    picture_filename TEXT NOT NULL,"
+        "    creator_id TEXT NOT NULL,"
+        "    created INTEGER NOT NULL,"
+        "    deletor_id TEXT,"
+        "    deleted INTEGER"
+        "); "
+    ))
+    cursor.execute((
         "CREATE TABLE users ("
         "    id INTEGER PRIMARY KEY AUTOINCREMENT,"
         "    user_id TEXT NOT NULL,"
@@ -1159,6 +1402,15 @@ def create_database(database_path):
         "    deleted INTEGER"
         ")"
     ))
+    cursor.execute((
+        "CREATE TABLE user_command_status ( "
+        "    id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "    user_id TEXT NOT NULL, "
+        "    status TEXT NOT NULL, "
+        "    updated INTEGER NOT NULL "
+        ")"
+    ))
+
     connection.commit()
     connection.close()
     print ("Datenbank {} angelegt".format(os.path.basename(database_path)))
@@ -1168,11 +1420,11 @@ if __name__ == "__main__":
     """ Main program """
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config', '-c', type=argparse.FileType('r'), required=True, dest='config', help='The config-File')
+    parser.add_argument('--config', '-c', type=str, required=True, dest='config', help='The config-File')
     args = parser.parse_args()
 
     config = configparser.ConfigParser()
-    config.read(args.config.name)
+    config.read(args.config)
     default_config = config['DEFAULT'] # type: SectionProxy
 
     database_path = default_config.get("DatabasePath", "{home}/database.db").format(home=str(Path.home()))
@@ -1187,4 +1439,4 @@ if __name__ == "__main__":
     # the configuration, and not every time the bot starts.
     kik.set_configuration(Configuration(webhook="{}:{}/incoming".format(default_config.get("RemoteHostIP", "www.example.com"), default_config.get("RemotePort", "8080"))))
     app = KikBot(kik, __name__)
-    app.run(port=int(default_config.get("LocalPort", 8080)), host=default_config.get("LocalIP", "0.0.0.0"), debug=False)
+    app.run(threaded=True, port=int(default_config.get("LocalPort", 8080)), host=default_config.get("LocalIP", "0.0.0.0"), debug=True)
