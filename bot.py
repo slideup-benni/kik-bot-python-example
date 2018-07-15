@@ -67,899 +67,907 @@ class KikBot(Flask):
         messages = messages_from_json(request.json["messages"])
 
         response_messages = []
+        message_controller = MessageController()
 
+
+        for message in messages:
+            response_messages += message_controller.process_message(message, self.kik_api.get_user(message.from_user))
+            self.kik_api.send_messages(response_messages)
+
+        return Response(status=200)
+
+
+
+class MessageController:
+
+    def __init__(self):
+        self.reload_config()
+        self.character_persistent_class = CharacterPersistentClass()
+        pass
+
+    @staticmethod
+    def reload_config():
         #reread config
         global config
         global default_config
         config.read(args.config)
         default_config = config['DEFAULT']  # type: SectionProxy
 
-        for message in messages:
-            character_persistent_class = CharacterPersistentClass()
-            user = self.kik_api.get_user(message.from_user)
-            user_command_status = CharacterPersistentClass.STATUS_NONE
-            user_command_status_data = None
-            # Check if its the user's first message. Start Chatting messages are sent only once.
-            if isinstance(message, StartChattingMessage):
 
-                response_messages.append(TextMessage(
+    def process_message(self, message, user):
+        response_messages = []
+        user_command_status = CharacterPersistentClass.STATUS_NONE
+        user_command_status_data = None
+        # Check if its the user's first message. Start Chatting messages are sent only once.
+        if isinstance(message, StartChattingMessage):
+
+            response_messages.append(TextMessage(
+                to=message.from_user,
+                chat_id=message.chat_id,
+                body="Hi {}, mit mir kann man auch privat reden. Für eine Liste an Befehlen antworte einfach mit 'Hilfe'.".format(user.first_name),
+                # keyboards are a great way to provide a menu of options for a user to respond with!
+                keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
+            ))
+
+        # Check if the user has sent a text message.
+        elif isinstance(message, TextMessage):
+            message_body = message.body.lower()
+
+            if message_body == "":
+                return [TextMessage(
                     to=message.from_user,
                     chat_id=message.chat_id,
-                    body="Hi {}, mit mir kann man auch privat reden. Für eine Liste an Befehlen antworte einfach mit 'Hilfe'.".format(user.first_name),
-                    # keyboards are a great way to provide a menu of options for a user to respond with!
-                    keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
-                ))
+                    body="Hi {}, ich bin der Character-Bot der Gruppe #germanrpu\n".format(user.first_name) +
+                         "Für weitere Informationen tippe auf Antworten und dann auf Hilfe.",
+                    keyboards=[SuggestedResponseKeyboard(responses=[
+                        TextResponse("Hilfe"),
+                        TextResponse("Regeln"),
+                        TextResponse("Vorlage")
+                    ])]
+                )]
 
-            # Check if the user has sent a text message.
-            elif isinstance(message, TextMessage):
-                user = self.kik_api.get_user(message.from_user)
-                message_body = message.body.lower()
+            #
+            # Dynamische Befehle
+            #
+            if message_body == u"\U00002B05\U0000FE0F":
+                status_obj = self.character_persistent_class.get_user_command_status(message.from_user)
+                if status_obj['status'] == CharacterPersistentClass.STATUS_DYN_MESSAGES:
+                    message_body = status_obj['data']['left'].lower()
 
-                if message_body == "":
-                    response_messages.append(TextMessage(
-                        to=message.from_user,
-                        chat_id=message.chat_id,
-                        body="Hi {}, ich bin der Character-Bot der Gruppe #germanrpu\n".format(user.first_name) +
-                             "Für weitere Informationen tippe auf Antworten und dann auf Hilfe.",
-                        keyboards=[SuggestedResponseKeyboard(responses=[
-                            TextResponse("Hilfe"),
-                            TextResponse("Regeln"),
-                            TextResponse("Vorlage")
-                        ])]
-                    ))
-                    self.kik_api.send_messages(response_messages)
-                    continue
+            elif message_body == u"\U000027A1\U0000FE0F":
+                status_obj = self.character_persistent_class.get_user_command_status(message.from_user)
+                if status_obj['status'] == CharacterPersistentClass.STATUS_DYN_MESSAGES:
+                    message_body = status_obj['data']['right'].lower()
 
-                #
-                # Dynamische Befehle
-                #
-                if message_body == u"\U00002B05\U0000FE0F":
-                    status_obj = character_persistent_class.get_user_command_status(message.from_user)
-                    if status_obj['status'] == CharacterPersistentClass.STATUS_DYN_MESSAGES:
-                        message_body = status_obj['data']['left'].lower()
+            message_command = message_body.split(None,1)[0]
 
-                elif message_body == u"\U000027A1\U0000FE0F":
-                    status_obj = character_persistent_class.get_user_command_status(message.from_user)
-                    if status_obj['status'] == CharacterPersistentClass.STATUS_DYN_MESSAGES:
-                        message_body = status_obj['data']['right'].lower()
+            #
+            # Befehl hinzufügen
+            #
+            if message_command in ["hinzufügen", "add"]:
+                if len(message_body.split(None,2)) == 3 and message_body.split(None,2)[1][0] == "@" and message_body.split(None,2)[2].strip() != "":
+                    selected_user = message_body.split(None,2)[1][1:]
 
-                message_command = message_body.split(None,1)[0]
+                    auth = self.check_auth(self.character_persistent_class, message)
+                    if selected_user != message.from_user and auth is not True:
+                        return [auth]
 
-                #
-                # Befehl hinzufügen
-                #
-                if message_command in ["hinzufügen", "add"]:
-                    if len(message_body.split(None,2)) == 3 and message_body.split(None,2)[1][0] == "@" and message_body.split(None,2)[2].strip() != "":
-                        selected_user = message_body.split(None,2)[1][1:]
+                    char_id = self.character_persistent_class.add_char(message_body.split(None, 2)[1][1:].strip(), message.from_user, message.body.split(None, 2)[2].strip())
 
-                        auth = self.check_auth(character_persistent_class, message)
-                        if selected_user != message.from_user and auth is not True:
-                            self.kik_api.send_messages([auth])
-                            continue
-
-                        char_id = character_persistent_class.add_char(message_body.split(None, 2)[1][1:].strip(), message.from_user, message.body.split(None, 2)[2].strip())
-
-                        if char_id == CharacterPersistentClass.get_min_char_id():
-                            body = "Alles klar! Der erste Charakter für @{} wurde hinzugefügt.".format(selected_user)
-                        else:
-                            body = "Alles klar! Der {}. Charakter für @{} wurde hinzugefügt.".format(char_id, selected_user)
-
-                        response_messages.append(TextMessage(
-                            to=message.from_user,
-                            chat_id=message.chat_id,
-                            body=body,
-                            keyboards=[SuggestedResponseKeyboard(responses=[
-                                self.generate_text_response("Anzeigen", selected_user, char_id, message),
-                                self.generate_text_response("Bild-setzen", selected_user, char_id, message),
-                                self.generate_text_response("Löschen", selected_user, char_id, message, force_username=True),
-                                TextResponse("Liste")
-                            ])]
-                        ))
-                    elif len(message_body.split(None,1)) == 2 and message_body.split(None,1)[1][0] != "@":
-                        char_id = character_persistent_class.add_char(message.from_user, message.from_user, message.body.split(None, 1)[1].strip())
-
-                        if char_id == CharacterPersistentClass.get_min_char_id():
-                            body = "Alles klar! Dein erster Charakter wurde hinzugefügt."
-                        else:
-                            body = "Alles klar! Dein {}. Charakter wurde hinzugefügt.".format(char_id)
-
-                        response_messages.append(TextMessage(
-                            to=message.from_user,
-                            chat_id=message.chat_id,
-                            body=body,
-                            keyboards=[SuggestedResponseKeyboard(responses=[
-                                self.generate_text_response("Anzeigen", message.from_user, char_id, message),
-                                self.generate_text_response("Bild-setzen", message.from_user, char_id, message),
-                                self.generate_text_response("Löschen", message.from_user, char_id, message, force_username=True),
-                                TextResponse("Liste")
-                            ])]
-                        ))
+                    if char_id == CharacterPersistentClass.get_min_char_id():
+                        body = "Alles klar! Der erste Charakter für @{} wurde hinzugefügt.".format(selected_user)
                     else:
-                        response_messages.append(TextMessage(
-                            to=message.from_user,
-                            chat_id=message.chat_id,
-                            body="Fehler beim Aufruf des Befehls. Siehe Hilfe.",
-                            keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
-                        ))
-
-                #
-                # Befehl ändern
-                #
-                elif message_command in ["ändern", "change"]:
-                    if len(message_body.split(None, 3)) == 4 and message_body.split(None, 3)[1][0] == "@" \
-                            and message_body.split(None, 3)[2].isdigit() and message_body.split(None, 3)[3].strip() != "":
-
-                        user_id = message_body.split(None, 3)[1][1:].strip()
-                        char_id = int(message_body.split(None, 3)[2])
-                        text = message.body.split(None, 3)[3].strip()
-
-                        auth = self.check_auth(character_persistent_class, message)
-                        if user_id != message.from_user and auth is not True:
-                            self.kik_api.send_messages([auth])
-                            continue
-
-                        character_persistent_class.change_char(user_id, message.from_user, text, char_id)
-                        response_messages.append(TextMessage(
-                            to=message.from_user,
-                            chat_id=message.chat_id,
-                            body="Alles klar! Der {}. Charakter für @{} wurde gespeichert.".format(char_id, user_id),
-                            keyboards=[SuggestedResponseKeyboard(responses=[
-                                self.generate_text_response("Anzeigen", user_id, char_id, message),
-                                self.generate_text_response("Bild-setzen", user_id, char_id, message),
-                                self.generate_text_response("Letzte-Löschen", user_id, char_id, message, force_username=True),
-                                TextResponse("Liste")
-                            ])]
-                        ))
-                    elif len(message_body.split(None, 2)) == 3 and message_body.split(None, 2)[1].isdigit() and message_body.split(None, 2)[2].strip() != "":
-
-                        char_id = int(message_body.split(None, 2)[1])
-                        text = message.body.split(None, 2)[2].strip()
-
-                        character_persistent_class.change_char(message.from_user, message.from_user, text, char_id)
-                        response_messages.append(TextMessage(
-                            to=message.from_user,
-                            chat_id=message.chat_id,
-                            body="Alles klar! Dein {}. Charakter wurde gespeichert.".format(char_id),
-                            keyboards=[SuggestedResponseKeyboard(responses=[
-                                self.generate_text_response("Anzeigen", message.from_user, char_id, message),
-                                self.generate_text_response("Bild-setzen", message.from_user, char_id, message),
-                                self.generate_text_response("Letzte-Löschen", message.from_user, char_id, message, force_username=True),
-                                TextResponse("Liste")
-                            ])]
-                        ))
-                    elif len(message_body.split(None, 2)) == 3 and message_body.split(None, 2)[1][0] == "@" and message_body.split(None, 2)[2].strip() != "":
-                        user_id = message_body.split(None, 2)[1][1:].strip()
-
-                        auth = self.check_auth(character_persistent_class, message)
-                        if user_id != message.from_user and auth is not True:
-                            self.kik_api.send_messages([auth])
-                            continue
-
-                        character_persistent_class.change_char(message_body.split(None, 2)[1][1:].strip(), message.from_user, message.body.split(None, 2)[2].strip())
-                        response_messages.append(TextMessage(
-                            to=message.from_user,
-                            chat_id=message.chat_id,
-                            body="Alles klar! Der erste Charakter für @{} wurde gespeichert.".format(user_id),
-                            keyboards=[SuggestedResponseKeyboard(responses=[
-                                self.generate_text_response("Anzeigen", user_id, None, message),
-                                self.generate_text_response("Bild-setzen", user_id, None, message),
-                                self.generate_text_response("Letzte-Löschen", user_id, None, message, force_username=True),
-                                TextResponse("Liste")
-                            ])]
-                        ))
-                    elif len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1][0] != "@":
-                        character_persistent_class.change_char(message.from_user, message.from_user, message.body.split(None, 1)[1].strip())
-                        response_messages.append(TextMessage(
-                            to=message.from_user,
-                            chat_id=message.chat_id,
-                            body="Alles klar! Dein erster Charakter wurde gespeichert.",
-                            keyboards=[SuggestedResponseKeyboard(responses=[
-                                self.generate_text_response("Anzeigen", message.from_user, None, message),
-                                self.generate_text_response("Bild-setzen", message.from_user, None, message),
-                                self.generate_text_response("Letzte-Löschen", message.from_user, None, message, force_username=True),
-                                TextResponse("Liste")
-                            ])]
-                        ))
-                    else:
-                        response_messages.append(TextMessage(
-                            to=message.from_user,
-                            chat_id=message.chat_id,
-                            body="Fehler beim Aufruf des Befehls. Siehe Hilfe.",
-                            keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
-                        ))
-
-                #
-                # Befehl Bild setzen
-                #
-                elif message_command in ["bild-setzen", "set-pic"]:
-
-                    response = None
-
-                    if len(message_body.split(None, 2)) == 3 and message_body.split(None, 2)[1][0] == "@" \
-                            and message_body.split(None, 2)[2].isdigit():
-
-                        user_id = message_body.split(None, 2)[1][1:].strip()
-                        char_id = int(message_body.split(None, 2)[2])
-
-                        auth = self.check_auth(character_persistent_class, message)
-                        if user_id != message.from_user and auth is not True:
-                            self.kik_api.send_messages([auth])
-                            continue
-
-                    elif len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1].isdigit():
-
-                        user_id = message.from_user
-                        char_id = int(message_body.split(None, 1)[1])
-
-                    elif len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1][0] == "@":
-                        user_id = message_body.split(None, 1)[1][1:].strip()
-                        char_id = None
-
-                        auth = self.check_auth(character_persistent_class, message)
-                        if user_id != message.from_user and auth is not True:
-                            self.kik_api.send_messages([auth])
-                            continue
-                    else:
-                        user_id = message.from_user
-                        char_id = None
-
-                    user_command_status = CharacterPersistentClass.STATUS_SET_PICTURE
-                    user_command_status_data = {
-                        'user_id': user_id,
-                        'char_id': char_id
-                    }
-
-                    response_messages.append(TextMessage(
-                        to=message.from_user,
-                        chat_id=message.chat_id,
-                        body="Alles Klar! Bitte schicke jetzt das Bild direkt an @{}".format(bot_username)
-                    ))
-
-                #
-                # Befehl Anzeigen
-                #
-                elif message_command in ["anzeigen", "show"]:
-                    char_data = None
-                    chars = None
-                    char_name = None
-
-                    if len(message_body.split(None,2)) == 3 and message_body.split(None,2)[1][0] == "@" and message_body.split(None,2)[2].isdigit():
-                        selected_user = message_body.split(None,2)[1][1:].strip()
-                        char_id = int(message_body.split(None,2)[2])
-                    elif len(message_body.split(None,2)) == 3 and message_body.split(None,2)[1][0] == "@" and message_body.split(None,2)[2].strip() != "":
-                        selected_user = message_body.split(None,2)[1][1:].strip()
-                        char_name = message_body.split(None, 2)[2].strip()
-                        chars = character_persistent_class.find_char(char_name, selected_user)
-                        if len(chars) == 1:
-                            char_id = chars[0]['char_id']
-                            char_data = chars[0]
-                        else:
-                            char_id = None
-                    elif len(message_body.split(None,1)) == 2 and message_body.split(None,1)[1].isdigit():
-                        selected_user = message.from_user
-                        char_id = int(message_body.split(None,1)[1])
-                    elif len(message_body.split(None,1)) == 2 and message_body.split(None,1)[1][0] == "@":
-                        selected_user = message_body.split(None,1)[1][1:].strip()
-                        char_id = None
-                    elif len(message_body.split(None,1)) == 2 and message_body.split(None,1)[1].strip() != "":
-                        char_name = message_body.split(None, 1)[1].strip()
-                        chars = character_persistent_class.find_char(char_name, message.from_user)
-                        selected_user = message.from_user
-                        if len(chars) == 1:
-                            char_id = chars[0]['char_id']
-                            char_data = chars[0]
-                        else:
-                            char_id = None
-                    else:
-                        selected_user = message.from_user
-                        char_id = None
-
-                    if chars is None and char_data is None and selected_user is not None:
-                        char_data = character_persistent_class.get_char(selected_user, char_id)
-
-                    if chars is not None and len(chars) == 0 and char_name is not None:
-                        response_messages.append(TextMessage(
-                            to=message.from_user,
-                            chat_id=message.chat_id,
-                            body="Es wurde kein Charakter mit dem Namen {} des Nutzers @{} gefunden".format(char_name, selected_user),
-                            keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Liste")])]
-                        ))
-                    elif chars is not None and len(chars) > 1:
-                        resp = []
-
-                        for char in chars:
-                            resp.append(self.generate_text_response("Anzeigen", char['user_id'], char['char_id'], message))
-
-                        resp.append(TextResponse("Liste"))
-
-                        response_messages.append(TextMessage(
-                            to=message.from_user,
-                            chat_id=message.chat_id,
-                            body="Es wurden {} Charaktere mit dem Namen {} des Nutzers @{} gefunden".format(len(chars), char_name, selected_user),
-                            keyboards=[SuggestedResponseKeyboard(responses=resp)]
-                        ))
-                    elif char_data is None and char_id is not None:
-                        response_messages.append(TextMessage(
-                            to=message.from_user,
-                            chat_id=message.chat_id,
-                            body="Keine Daten zum {}. Charakter des Nutzers @{} gefunden".format(char_id, selected_user),
-                            keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Liste")])]
-                        ))
-                    elif char_data is None:
-                        response_messages.append(TextMessage(
-                            to=message.from_user,
-                            chat_id=message.chat_id,
-                            body="Keine Daten zum Nutzer @{} gefunden".format(selected_user),
-                            keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Liste")])]
-                        ))
-                    else:
-                        (char_resp_msg, user_command_status, user_command_status_data) = self.create_char_messages(character_persistent_class, selected_user,
-                                                                       char_id, char_data, message, user_command_status, user_command_status_data)
-                        response_messages += char_resp_msg
-
-
-                #
-                # Befehl Löschen
-                #
-                elif message_command in ["löschen", "del", "delete"]:
-                    if len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1][0] == "@":
-                        if len(message_body.split(None, 2)) == 3 and message_body.split(None, 2)[2].isdigit():
-                            char_id = int(message_body.split(None, 2)[2])
-                            selected_user = message_body.split(None, 2)[1][1:].strip()
-                        else:
-                            char_id = None
-                            selected_user = message_body.split(None, 1)[1][1:].strip()
-
-                        if selected_user == message.from_user:
-                            character_persistent_class.remove_char(selected_user, message.from_user, char_id)
-
-                            if char_id is not None:
-                                body = "Du hast erfolgreich deinen {}. Charakter gelöscht".format(char_id)
-                            else:
-                                body = "Du hast erfolgreich deinen Charakter gelöscht."
-
-                            response_messages.append(TextMessage(
-                                to=message.from_user,
-                                chat_id=message.chat_id,
-                                body=body,
-                                keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Liste")])]
-                            ))
-
-                        elif message.from_user in [x.strip() for x in default_config.get("Admins", "admin1").split(',')]:
-                            character_persistent_class.remove_char(selected_user, message.from_user, char_id)
-
-                            if char_id is not None:
-                                body = "Du hast erfolgreich den {}. Charakter von @{} gelöscht.".format(char_id, selected_user)
-                            else:
-                                body = "Du hast erfolgreich den ersten Charakter von @{} gelöscht.".format(selected_user)
-
-                            response_messages.append(TextMessage(
-                                to=message.from_user,
-                                chat_id=message.chat_id,
-                                body=body,
-                                keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Liste")])]
-                            ))
-
-                        else:
-                            response_messages.append(TextMessage(
-                                to=message.from_user,
-                                chat_id=message.chat_id,
-                                body="Du kannst keine Charaktere von anderen Nutzern löschen.",
-                                keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Liste")])]
-                            ))
-
-                    else:
-                        response_messages.append(TextMessage(
-                            to=message.from_user,
-                            chat_id=message.chat_id,
-                            body="Fehler beim Aufruf des Befehls. Siehe Hilfe.",
-                            keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
-                        ))
-
-                #
-                # Befehl Löschen (letzte)
-                #
-                elif message_command in ["letzte-löschen", "del-last", "delete-last"]:
-                    if len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1][0] == "@":
-                        if len(message_body.split(None, 2)) == 3 and message_body.split(None, 2)[2].isdigit():
-                            char_id = int(message_body.split(None, 2)[2])
-                            selected_user = message_body.split(None, 2)[1][1:].strip()
-                        else:
-                            char_id = None
-                            selected_user = message_body.split(None, 1)[1][1:].strip()
-
-
-                        if selected_user == message.from_user:
-                            character_persistent_class.remove_last_char_change(selected_user, message.from_user)
-
-                            if char_id is not None:
-                                body = "Du hast erfolgreich die letzte Änderung am Charakter {} gelöscht.".format(char_id)
-                            else:
-                                body = "Du hast erfolgreich die letzte Änderung gelöscht."
-
-                            response_messages.append(TextMessage(
-                                to=message.from_user,
-                                chat_id=message.chat_id,
-                                body=body,
-                                keyboards=[SuggestedResponseKeyboard(responses=[
-                                    TextResponse("Liste"),
-                                    self.generate_text_response("Anzeigen", selected_user, char_id, message)
-                                ])]
-                            ))
-
-                        elif message.from_user in [x.strip() for x in default_config.get("Admins", "admin1").split(',')]:
-                            character_persistent_class.remove_last_char_change(selected_user, message.from_user)
-
-                            if char_id is not None:
-                                body = "Du hast erfolgreich die letzte Änderung des Charakters {} von @{} gelöscht.".format(char_id, selected_user)
-                            else:
-                                body = "Du hast erfolgreich die letzte Änderung des Charakters von @{} gelöscht.".format(selected_user)
-
-                            response_messages.append(TextMessage(
-                                to=message.from_user,
-                                chat_id=message.chat_id,
-                                body=body,
-                                keyboards=[SuggestedResponseKeyboard(responses=[
-                                    TextResponse("Liste"),
-                                    self.generate_text_response("Anzeigen", selected_user, char_id, message)
-                                ])]
-                            ))
-
-                        else:
-                            response_messages.append(TextMessage(
-                                to=message.from_user,
-                                chat_id=message.chat_id,
-                                body="Du kannst keine Charaktere von anderen Nutzern löschen.",
-                                keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Liste")])]
-                            ))
-
-                    else:
-                        response_messages.append(TextMessage(
-                            to=message.from_user,
-                            chat_id=message.chat_id,
-                            body="Fehler beim Aufruf des Befehls. Siehe Hilfe.",
-                            keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
-                        ))
-
-                #
-                # Befehl Suche
-                #
-                elif message_command in ["suche", "search"]:
-                    if len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1].strip() != "":
-                        query = message_body.split(None, 1)[1].strip()
-
-                        auth = self.check_auth(character_persistent_class, message)
-                        if auth is not True:
-                            self.kik_api.send_messages([auth])
-                            continue
-
-                        chars = character_persistent_class.search_char(query)
-
-                        if len(chars) == 0:
-                            response_messages.append(TextMessage(
-                                to=message.from_user,
-                                chat_id=message.chat_id,
-                                body="Für die Suchanfrage wurden keine Charaktere gefunden.",
-                                keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Liste")])]
-                            ))
-
-                        elif len(chars) == 1:
-                            (char_resp_msg, user_command_status, user_command_status_data) = self.create_char_messages(character_persistent_class, chars[0]['user_id'],
-                                                                           chars[0]['char_id'], chars[0], message, user_command_status, user_command_status_data)
-                            response_messages += char_resp_msg
-
-                        else:
-                            resp = []
-
-                            for char in chars:
-                                resp.append(self.generate_text_response("Anzeigen", char['user_id'], char['char_id'], message))
-
-                            resp.append(TextResponse("Liste"))
-                            response_messages.append(TextMessage(
-                                to=message.from_user,
-                                chat_id=message.chat_id,
-                                body="Es wurden mehrere Charaktere gefunden, die deiner Suchanfrage entsprechen.",
-                                keyboards=[SuggestedResponseKeyboard(responses=resp)]
-                            ))
-
-
-
-                    else:
-                        response_messages.append(TextMessage(
-                            to=message.from_user,
-                            chat_id=message.chat_id,
-                            body="Fehler beim Aufruf des Befehls. Siehe Hilfe.",
-                            keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
-                        ))
-
-
-                #
-                # Befehl Auth
-                #
-                elif message_command in ["auth", "berechtigen", "authorize", "authorise"]:
-                    if len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1][0] == "@":
-                        selected_user = message_body.split(None, 1)[1][1:].strip()
-                        result = character_persistent_class.auth_user(selected_user, message.from_user)
-
-                        if result is True:
-                            response_messages.append(TextMessage(
-                                to=message.from_user,
-                                chat_id=message.chat_id,
-                                body="Du hast erfolgreich den Nutzer @{} berechtigt.".format(selected_user)
-                            ))
-
-                        else:
-                            response_messages.append(TextMessage(
-                                to=message.from_user,
-                                chat_id=message.chat_id,
-                                body="Der Nutzer @{} konnte nicht berechtigt werden.\n\n".format(selected_user) +
-                                    "Dies kann folgende Ursachen haben:\n" +
-                                    "1. Der Nutzer ist bereits berechtigt.\n" +
-                                    "2. Du bist nicht berechtigt, diesen Nutzer zu berechtigen."
-                            ))
-
-                    else:
-                        response_messages.append(TextMessage(
-                            to=message.from_user,
-                            chat_id=message.chat_id,
-                            body="Fehler beim Aufruf des Befehls. Siehe Hilfe.",
-                            keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
-                        ))
-
-                #
-                # Befehl UnAuth
-                #
-                elif message_command in ["unauth", "entmachten", "unauthorize", "unauthorise"]:
-                    if len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1][0] == "@":
-                        selected_user = message_body.split(None, 1)[1][1:].strip()
-                        result = character_persistent_class.unauth_user(selected_user, message.from_user)
-
-                        if result is True:
-                            response_messages.append(TextMessage(
-                                to=message.from_user,
-                                chat_id=message.chat_id,
-                                body="Du hast erfolgreich den Nutzer @{} entmächtigt.".format(selected_user)
-                            ))
-
-                        else:
-                            response_messages.append(TextMessage(
-                                to=message.from_user,
-                                chat_id=message.chat_id,
-                                body="Der Nutzer @{} konnte nicht entmächtigt werden.\n\n".format(selected_user) +
-                                     "Dies kann folgende Ursachen haben:\n" +
-                                     "Du bist nicht berechtigt, diesen Nutzer zu entmächtigen."
-                            ))
-
-                    else:
-                        response_messages.append(TextMessage(
-                            to=message.from_user,
-                            chat_id=message.chat_id,
-                            body="Fehler beim Aufruf des Befehls. Siehe Hilfe.",
-                            keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
-                        ))
-
-                #
-                # Befehl Liste
-                #
-                elif message_command in ["liste", "list"]:
-                    auth = self.check_auth(character_persistent_class, message)
-                    if auth is not True:
-                        self.kik_api.send_messages([auth])
-                        continue
-
-                    chars = character_persistent_class.get_all_users_with_chars()
-                    user_ids = [item['user_id'] for item in chars]
-
-                    chars_text = []
-                    for char in chars:
-                        if char['chars_cnt'] > CharacterPersistentClass.get_min_char_id():
-                            chars_text.append("@{} ({})".format(char['user_id'], char['chars_cnt']))
-                        else:
-                            chars_text.append("@{}".format(char['user_id']))
-
-                    response_messages.append(TextMessage(
-                        to=message.from_user,
-                        chat_id=message.chat_id,
-                        body=",\n".join(chars_text),
-                        keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Anzeigen @{}".format(x)) for x in user_ids])]
-                    ))
-
-
-                #
-                # Befehl Vorlage
-                #
-                elif message_body in ["vorlage", "charaktervorlage", "boilerplate", "draft", "template"]:
-                    response_messages.append(TextMessage(
-                        to=message.from_user,
-                        chat_id=message.chat_id,
-                        body=(
-                            "Die folgende Charaktervorlage kann genutzt werden um einen neuen Charakter im Rollenspiel zu erstellen.\n"
-                            "Dies ist eine notwendige Voraussetung um an dem Rollenspiel teilnehmen zu können.\n"
-                            "Bitte poste diese Vorlage ausgefüllt im Gruppenchannel #germanrpu\n"
-                            "Du kannst diese Vorlage über den Bot speichern, indem du die folgende Zeile als erste Zeile in den Charakterbogen schreibst:\n" +
-                            "@{} hinzufügen\n".format(bot_username)
-                        ),
-                        keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe"), TextResponse("Weitere-Beispiele")])]
-                    ))
-                    response_messages.append(TextMessage(
-                        to=message.from_user,
-                        chat_id=message.chat_id,
-                        body=(
-                            "Basics:\n"
-                            "Originaler Charakter oder OC?:\n\n"
-                            "Vorname:\n"
-                            "Nachname:\n"
-                            "Rufname/Spitzname:\n"
-                            "Alter:\n"
-                            "Blutgruppe:\n"
-                            "Geschlecht:\n\n"
-                            "Wohnort:\n\n"
-                            "Apparance\n\n"
-                            "Größe: \n"
-                            "Gewicht: \n"
-                            "Haarfarbe: \n"
-                            "Haarlänge:\n"
-                            "Augenfarbe: \n"
-                            "Aussehen:\n"
-                            "Merkmale:\n\n"
-                            "About You\n\n"
-                            "Persönlichkeit: (bitte mehr als 2 Sätze)\n\n"
-                            "Mag:\n"
-                            "Mag nicht:\n"
-                            "Hobbys:\n\n"
-                            "Wesen:\n\n"
-                            "Fähigkeiten:\n\n"
-                            "Waffen etc:\n\n\n"
-                            "Altagskleidung:\n\n"
-                            "Sonstiges\n\n"
-                            "(Kann alles beinhalten, was noch nicht im Steckbrief vorkam)"
-                        ),
-                        keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe"), TextResponse("Weitere-Beispiele")])]
-                    ))
-
-
-                #
-                # Befehl Regeln
-                #
-                elif message_body in ["regeln", "rules"]:
-                    response_messages.append(TextMessage(
-                        to=message.from_user,
-                        chat_id=message.chat_id,
-                        body=(
-                            "*~RULES~*\n\n"
-                            "1.\n"
-                            "Kein Sex! (flirten ist OK, Sex per PN)\n\n"
-                            "2.\n"
-                            "Sachen die man tut: *......*\n"
-                            "Sachen die man sagt: ohne Zeichen\n"
-                            "Sachen die man denkt: //..... //\n"
-                            "Sachen die nicht zum RP gehören (....)\n\n"
-                            "3.\n"
-                            "Es gibt 2 Gruppen:\n"
-                            "Die öffentliche ist für alle Gespräche, die nicht zum RP gehören.\n"
-                            "Die *REAL*RPG* Gruppe ist AUSSCHLIEẞLICH zum RPG zugelassen.\n\n"
-                            "4.\n"
-                            "Keine overpowerten und nur ernst gemeinte Charakter. (Es soll ja Spaß machen)\n\n"
-                            "5.\n"
-                            "RP Handlung:\n"
-                            "Schön guten Abend, Seid ihr es nicht auch leid? Von jeglichen Menschen aus eurer "
-                            "Heimat vertrieben zu werden? Gejagt, verfolgt oder auch nur verachtet zu werden? "
-                            "Dann kommt zu uns! Wir bauen zusammen eine Stadt auf. Eine Stadt wo nur Wesen "
-                            "wohnen und auch nur Eintritt haben.\n\n"
-                            "6.\n"
-                            "Sei Aktiv mindestens in 3 Tagen einmal!\n\n"
-                            "7.\n"
-                            "Keine Hardcore Horror Bilder. (höchstens per PN wenn ihr es unter bringen wollt mit der bestimmten Person)\n\n"
-                            "8.\n"
-                            "Wenn du ein Arsch bist oder dich einfach nicht an die Regeln hältst wirst "
-                            "du verwarnt oder gekickt. Wenn es unverdient war schreib uns an.\n\n"
-                            "9.\n"
-                            "Übertreibt es nicht mit dem Drama.\n\n"
-                            "10.\n"
-                            "Wenn du bis hier gelesen hast sag 'Luke ich bin dein Vater' Antworte in den nächsten 10 Min."
-                        ),
-                        keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Charaktervorlage"), TextResponse("Hilfe"), TextResponse("Weitere-Beispiele")])]
-                    ))
-
-
-                #
-                # Befehl Hilfe
-                #
-                elif message_body in ["hilfe", "hilfe!", "help", "h", "?"]:
-                    response_messages.append(TextMessage(
-                        to=message.from_user,
-                        chat_id=message.chat_id,
-                        body=(
-                            "Folgende Befehle sind möglich:\n"
-                            "Hilfe\n"
-                            "Regeln\n"
-                            "Vorlage\n"
-                            "Hinzufügen (<username>) <text>\n"
-                            "Ändern (<username>) (<char_id>) <text>\n"
-                            "Bild-setzen (<username>) (<char_id>)\n"
-                            "Anzeigen (<username>) (<char_id>|<char_name>)\n"
-                            "Löschen <eigener_username> (<char_id>)\n"
-                            "Letzte-Löschen <eigener_username> (<char_id>)\n"
-                            "Suchen <char_name>\n"
-                            "Berechtigen <username>\n"
-                            "Liste\n\n"
-                            "Die Befehle können ausgeführt werden indem man entweder den Bot direkt anschreibt oder in der Gruppe '@{} <Befehl>' eingibt.\n".format(bot_username) +
-                            "Beispiel: '@{} Liste'\n\n".format(bot_username) +
-                            "Der Parameter <char_id> ist nur relevant, wenn du mehr als einen Charakter speichern möchtest. Der erste Charakter "
-                            "hat immer die Id 1. Legst du einen weiteren an, erhält dieser die Id 2 usw.\n\n"
-                            "Der Bot kann nicht nur innerhalb einer Gruppe verwendet werden; man kann ihn auch direkt anschreiben (@{}) oder in PMs verwenden.".format(bot_username)
-                        ),
-                        keyboards=[SuggestedResponseKeyboard(responses=[
-                            TextResponse("Regeln"),
-                            TextResponse("Kurzbefehle"),
-                            TextResponse("Weitere-Beispiele"),
-                            TextResponse("Charaktervorlage")
-                        ])]
-                    ))
-
-                elif message_body in ["hilfe2", "help2", "kurzbefehle"]:
-                    response_messages.append(TextMessage(
-                        to=message.from_user,
-                        chat_id=message.chat_id,
-                        body=(
-                            "Folgende Kurz-Befehle sind möglich:\n"
-                            "help\n"
-                            "rules\n"
-                            "template\n"
-                            "add (<username>) <text>\n"
-                            "change (<username>) (<char_id>) <text>\n"
-                            "set-pic (<username>) (<char_id>)\n"
-                            "show (<username>) (<char_id>|<char_name>)\n"
-                            "del <eigener_username> (<char_id>)\n"
-                            "del-last <eigener_username> (<char_id>)\n"
-                            "search <char_name>\n"
-                            "auth <username>\n"
-                            "list\n"
-                        ),
-                        keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("rules"), TextResponse("Weitere-Beispiele"), TextResponse("Template")])]
-                    ))
-                elif message_body in ["admin-hilfe", "admin-help"]:
-                    auth = self.check_auth(character_persistent_class, message)
-                    if auth is not True:
-                        self.kik_api.send_messages([auth])
-                        continue
-
-                    response_messages.append(TextMessage(
-                        to=message.from_user,
-                        chat_id=message.chat_id,
-                        body=(
-                            "Folgende Admin-Befehle sind möglich:\n"
-                            "auth/Berechtigen <username>\n"
-                            "unauth/Entmachten <username>\n"
-                            "del/Löschen <username> (<char_id>)\n"
-                            "del-last/Letzte-Löschen <username> (<char_id>)\n"
-                        ),
-                        keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("rules"), TextResponse("Weitere-Beispiele"), TextResponse("Template")])]
-                    ))
-                elif message_body in ["weitere-beispiele", "more-examples"]:
-                    response_messages.append(TextMessage(
-                        to=message.from_user,
-                        chat_id=message.chat_id,
-                        body=(
-                            "Weitere Beispiele\n"
-                            "Alle Beispiele sind in einzelnen Abschnitten mittels ----- getrennt.\n\n"
-                            "------\n"
-                            "@{} Hinzufügen @{}\n".format(bot_username, message.from_user) +
-                            "Hier kann der Text zum Charakter stehen\n"
-                            "Zeilenumbrüche sind erlaubt\n"
-                            "In diesem Beispiel wurde der Nickname angegeben\n"
-                            "------\n"
-                            "@{} Ändern\n".format(bot_username) +
-                            "Hier kann der Text zum Charakter stehen\n"
-                            "Die Befehle Ändern und Hinzufügen bewirken das gleiche\n"
-                            "Wird kein Benutzername angegeben so betrifft die Änderung bzw. das Hinzufügen einen selbst\n"
-                            "------\n"
-                            "@{} Anzeigen @ismil1110\n".format(bot_username) +
-                            "------\n"
-                            "@{} Anzeigen\n".format(bot_username) +
-                            "------\n"
-                            "@{} Löschen @{}\n".format(bot_username, message.from_user) +
-                            "------\n"
-                            "@{} Liste\n".format(bot_username) +
-                            "------\n"
-                            "Bitte beachten, dass alle Befehle an den Bot mit @{} beginnen müssen. Die Nachricht darf".format(bot_username) +
-                            " mit keinem Leerzeichen oder sonstigen Zeichen beginnen, da ansonsten die Nachricht nicht an den Bot weitergeleitet wird.\n"
-                            "Wenn du bei dieser Nachricht auf Antworten tippst, werden dir unten 4 der oben gezeigten Beispiele als Vorauswahl angeboten"
-                        ),
-                        keyboards=[SuggestedResponseKeyboard(responses=[
-                            TextResponse("Hilfe"),
-                            TextResponse((
-                                "@{} Hinzufügen @{} ".format(bot_username, message.from_user) +
-                                "Zeilenumbrüche sind nicht Pflicht."
-                            )),
-                            TextResponse("@{} Anzeigen @ismil1110".format(bot_username)),
-                            TextResponse("@{} Anzeigen".format(bot_username)),
-                            TextResponse("@{} Liste".format(bot_username))
-                        ])]
-                    ))
-
-                #
-                # Befehl einer
-                #
-                elif message_body in ["anderer bot"]:
-                    response_messages.append(TextMessage(
-                        to=message.from_user,
-                        chat_id=message.chat_id,
-                        body=u"Es kann nur einen geben! \U0001F608"
-                    ))
-
-
-
-                #
-                # Befehl unbekannt
-                #
-                elif message_command != "":
-                      response_messages.append(TextMessage(
-                        to=message.from_user,
-                        chat_id=message.chat_id,
-                        body="Sorry {}, den Befehl '{}' kenne ich nicht.".format(user.first_name, message_command),
-                        keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
-                    ))
-                else:
-                    response_messages.append(TextMessage(
-                        to=message.from_user,
-                        chat_id=message.chat_id,
-                        body="Sorry {}, ich habe dich nicht verstanden.".format(user.first_name),
-                        keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
-                    ))
-            elif isinstance(message, PictureMessage):
-                status_obj = character_persistent_class.get_user_command_status(message.from_user)
-                if status_obj is None or status_obj['status'] != CharacterPersistentClass.STATUS_SET_PICTURE:
-                    response_messages.append(TextMessage(
-                        to=message.from_user,
-                        chat_id=message.chat_id,
-                        body="Sorry {}, mit diesem Bild kann ich leider nichts anfangen.".format(user.first_name),
-                        keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
-                    ))
-
-                else:
-                    success = character_persistent_class.set_char_pic(status_obj['data']['user_id'], message.from_user, message.pic_url, status_obj['data']['char_id'])
-                    if success is True:
-                        body = "Alles klar! Das Bild wurde gesetzt."
-                        show_resp = self.generate_text_response("Anzeigen", status_obj['data']['user_id'], status_obj['data']['char_id'], message)
-                    else:
-                        body = "Beim hochladen ist ein Fehler aufgetreten. Bitte versuche es erneut."
-                        show_resp = self.generate_text_response("Bild-setzen", status_obj['data']['user_id'], status_obj['data']['char_id'], message)
-                        user_command_status = status_obj['status']
-                        user_command_status_data = status_obj['data']
+                        body = "Alles klar! Der {}. Charakter für @{} wurde hinzugefügt.".format(char_id, selected_user)
 
                     response_messages.append(TextMessage(
                         to=message.from_user,
                         chat_id=message.chat_id,
                         body=body,
                         keyboards=[SuggestedResponseKeyboard(responses=[
-                            show_resp,
+                            self.generate_text_response("Anzeigen", selected_user, char_id, message),
+                            self.generate_text_response("Bild-setzen", selected_user, char_id, message),
+                            self.generate_text_response("Löschen", selected_user, char_id, message, force_username=True),
                             TextResponse("Liste")
                         ])]
                     ))
+                elif len(message_body.split(None,1)) == 2 and message_body.split(None,1)[1][0] != "@":
+                    char_id = self.character_persistent_class.add_char(message.from_user, message.from_user, message.body.split(None, 1)[1].strip())
 
-            # If its not a text message, give them another chance to use the suggested responses
+                    if char_id == CharacterPersistentClass.get_min_char_id():
+                        body = "Alles klar! Dein erster Charakter wurde hinzugefügt."
+                    else:
+                        body = "Alles klar! Dein {}. Charakter wurde hinzugefügt.".format(char_id)
+
+                    response_messages.append(TextMessage(
+                        to=message.from_user,
+                        chat_id=message.chat_id,
+                        body=body,
+                        keyboards=[SuggestedResponseKeyboard(responses=[
+                            self.generate_text_response("Anzeigen", message.from_user, char_id, message),
+                            self.generate_text_response("Bild-setzen", message.from_user, char_id, message),
+                            self.generate_text_response("Löschen", message.from_user, char_id, message, force_username=True),
+                            TextResponse("Liste")
+                        ])]
+                    ))
+                else:
+                    response_messages.append(TextMessage(
+                        to=message.from_user,
+                        chat_id=message.chat_id,
+                        body="Fehler beim Aufruf des Befehls. Siehe Hilfe.",
+                        keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
+                    ))
+
+            #
+            # Befehl ändern
+            #
+            elif message_command in ["ändern", "change"]:
+                if len(message_body.split(None, 3)) == 4 and message_body.split(None, 3)[1][0] == "@" \
+                        and message_body.split(None, 3)[2].isdigit() and message_body.split(None, 3)[3].strip() != "":
+
+                    user_id = message_body.split(None, 3)[1][1:].strip()
+                    char_id = int(message_body.split(None, 3)[2])
+                    text = message.body.split(None, 3)[3].strip()
+
+                    auth = self.check_auth(self.character_persistent_class, message)
+                    if user_id != message.from_user and auth is not True:
+                        return [auth]
+
+                    self.character_persistent_class.change_char(user_id, message.from_user, text, char_id)
+                    response_messages.append(TextMessage(
+                        to=message.from_user,
+                        chat_id=message.chat_id,
+                        body="Alles klar! Der {}. Charakter für @{} wurde gespeichert.".format(char_id, user_id),
+                        keyboards=[SuggestedResponseKeyboard(responses=[
+                            self.generate_text_response("Anzeigen", user_id, char_id, message),
+                            self.generate_text_response("Bild-setzen", user_id, char_id, message),
+                            self.generate_text_response("Letzte-Löschen", user_id, char_id, message, force_username=True),
+                            TextResponse("Liste")
+                        ])]
+                    ))
+                elif len(message_body.split(None, 2)) == 3 and message_body.split(None, 2)[1].isdigit() and message_body.split(None, 2)[2].strip() != "":
+
+                    char_id = int(message_body.split(None, 2)[1])
+                    text = message.body.split(None, 2)[2].strip()
+
+                    self.character_persistent_class.change_char(message.from_user, message.from_user, text, char_id)
+                    response_messages.append(TextMessage(
+                        to=message.from_user,
+                        chat_id=message.chat_id,
+                        body="Alles klar! Dein {}. Charakter wurde gespeichert.".format(char_id),
+                        keyboards=[SuggestedResponseKeyboard(responses=[
+                            self.generate_text_response("Anzeigen", message.from_user, char_id, message),
+                            self.generate_text_response("Bild-setzen", message.from_user, char_id, message),
+                            self.generate_text_response("Letzte-Löschen", message.from_user, char_id, message, force_username=True),
+                            TextResponse("Liste")
+                        ])]
+                    ))
+                elif len(message_body.split(None, 2)) == 3 and message_body.split(None, 2)[1][0] == "@" and message_body.split(None, 2)[2].strip() != "":
+                    user_id = message_body.split(None, 2)[1][1:].strip()
+
+                    auth = self.check_auth(self.character_persistent_class, message)
+                    if user_id != message.from_user and auth is not True:
+                        return [auth]
+
+                    self.character_persistent_class.change_char(message_body.split(None, 2)[1][1:].strip(), message.from_user, message.body.split(None, 2)[2].strip())
+                    response_messages.append(TextMessage(
+                        to=message.from_user,
+                        chat_id=message.chat_id,
+                        body="Alles klar! Der erste Charakter für @{} wurde gespeichert.".format(user_id),
+                        keyboards=[SuggestedResponseKeyboard(responses=[
+                            self.generate_text_response("Anzeigen", user_id, None, message),
+                            self.generate_text_response("Bild-setzen", user_id, None, message),
+                            self.generate_text_response("Letzte-Löschen", user_id, None, message, force_username=True),
+                            TextResponse("Liste")
+                        ])]
+                    ))
+                elif len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1][0] != "@":
+                    self.character_persistent_class.change_char(message.from_user, message.from_user, message.body.split(None, 1)[1].strip())
+                    response_messages.append(TextMessage(
+                        to=message.from_user,
+                        chat_id=message.chat_id,
+                        body="Alles klar! Dein erster Charakter wurde gespeichert.",
+                        keyboards=[SuggestedResponseKeyboard(responses=[
+                            self.generate_text_response("Anzeigen", message.from_user, None, message),
+                            self.generate_text_response("Bild-setzen", message.from_user, None, message),
+                            self.generate_text_response("Letzte-Löschen", message.from_user, None, message, force_username=True),
+                            TextResponse("Liste")
+                        ])]
+                    ))
+                else:
+                    response_messages.append(TextMessage(
+                        to=message.from_user,
+                        chat_id=message.chat_id,
+                        body="Fehler beim Aufruf des Befehls. Siehe Hilfe.",
+                        keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
+                    ))
+
+            #
+            # Befehl Bild setzen
+            #
+            elif message_command in ["bild-setzen", "set-pic"]:
+
+                response = None
+
+                if len(message_body.split(None, 2)) == 3 and message_body.split(None, 2)[1][0] == "@" \
+                        and message_body.split(None, 2)[2].isdigit():
+
+                    user_id = message_body.split(None, 2)[1][1:].strip()
+                    char_id = int(message_body.split(None, 2)[2])
+
+                    auth = self.check_auth(self.character_persistent_class, message)
+                    if user_id != message.from_user and auth is not True:
+                        return [auth]
+
+                elif len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1].isdigit():
+
+                    user_id = message.from_user
+                    char_id = int(message_body.split(None, 1)[1])
+
+                elif len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1][0] == "@":
+                    user_id = message_body.split(None, 1)[1][1:].strip()
+                    char_id = None
+
+                    auth = self.check_auth(self.character_persistent_class, message)
+                    if user_id != message.from_user and auth is not True:
+                        return [auth]
+
+                else:
+                    user_id = message.from_user
+                    char_id = None
+
+                user_command_status = CharacterPersistentClass.STATUS_SET_PICTURE
+                user_command_status_data = {
+                    'user_id': user_id,
+                    'char_id': char_id
+                }
+
+                response_messages.append(TextMessage(
+                    to=message.from_user,
+                    chat_id=message.chat_id,
+                    body="Alles Klar! Bitte schicke jetzt das Bild direkt an @{}".format(bot_username)
+                ))
+
+            #
+            # Befehl Anzeigen
+            #
+            elif message_command in ["anzeigen", "show"]:
+                char_data = None
+                chars = None
+                char_name = None
+
+                if len(message_body.split(None,2)) == 3 and message_body.split(None,2)[1][0] == "@" and message_body.split(None,2)[2].isdigit():
+                    selected_user = message_body.split(None,2)[1][1:].strip()
+                    char_id = int(message_body.split(None,2)[2])
+                elif len(message_body.split(None,2)) == 3 and message_body.split(None,2)[1][0] == "@" and message_body.split(None,2)[2].strip() != "":
+                    selected_user = message_body.split(None,2)[1][1:].strip()
+                    char_name = message_body.split(None, 2)[2].strip()
+                    chars = self.character_persistent_class.find_char(char_name, selected_user)
+                    if len(chars) == 1:
+                        char_id = chars[0]['char_id']
+                        char_data = chars[0]
+                    else:
+                        char_id = None
+                elif len(message_body.split(None,1)) == 2 and message_body.split(None,1)[1].isdigit():
+                    selected_user = message.from_user
+                    char_id = int(message_body.split(None,1)[1])
+                elif len(message_body.split(None,1)) == 2 and message_body.split(None,1)[1][0] == "@":
+                    selected_user = message_body.split(None,1)[1][1:].strip()
+                    char_id = None
+                elif len(message_body.split(None,1)) == 2 and message_body.split(None,1)[1].strip() != "":
+                    char_name = message_body.split(None, 1)[1].strip()
+                    chars = self.character_persistent_class.find_char(char_name, message.from_user)
+                    selected_user = message.from_user
+                    if len(chars) == 1:
+                        char_id = chars[0]['char_id']
+                        char_data = chars[0]
+                    else:
+                        char_id = None
+                else:
+                    selected_user = message.from_user
+                    char_id = None
+
+                if chars is None and char_data is None and selected_user is not None:
+                    char_data = self.character_persistent_class.get_char(selected_user, char_id)
+
+                if chars is not None and len(chars) == 0 and char_name is not None:
+                    response_messages.append(TextMessage(
+                        to=message.from_user,
+                        chat_id=message.chat_id,
+                        body="Es wurde kein Charakter mit dem Namen {} des Nutzers @{} gefunden".format(char_name, selected_user),
+                        keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Liste")])]
+                    ))
+                elif chars is not None and len(chars) > 1:
+                    resp = []
+
+                    for char in chars:
+                        resp.append(self.generate_text_response("Anzeigen", char['user_id'], char['char_id'], message))
+
+                    resp.append(TextResponse("Liste"))
+
+                    response_messages.append(TextMessage(
+                        to=message.from_user,
+                        chat_id=message.chat_id,
+                        body="Es wurden {} Charaktere mit dem Namen {} des Nutzers @{} gefunden".format(len(chars), char_name, selected_user),
+                        keyboards=[SuggestedResponseKeyboard(responses=resp)]
+                    ))
+                elif char_data is None and char_id is not None:
+                    response_messages.append(TextMessage(
+                        to=message.from_user,
+                        chat_id=message.chat_id,
+                        body="Keine Daten zum {}. Charakter des Nutzers @{} gefunden".format(char_id, selected_user),
+                        keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Liste")])]
+                    ))
+                elif char_data is None:
+                    response_messages.append(TextMessage(
+                        to=message.from_user,
+                        chat_id=message.chat_id,
+                        body="Keine Daten zum Nutzer @{} gefunden".format(selected_user),
+                        keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Liste")])]
+                    ))
+                else:
+                    (char_resp_msg, user_command_status, user_command_status_data) = self.create_char_messages(self.character_persistent_class, selected_user,
+                                                                   char_id, char_data, message, user_command_status, user_command_status_data)
+                    response_messages += char_resp_msg
+
+
+            #
+            # Befehl Löschen
+            #
+            elif message_command in ["löschen", "del", "delete"]:
+                if len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1][0] == "@":
+                    if len(message_body.split(None, 2)) == 3 and message_body.split(None, 2)[2].isdigit():
+                        char_id = int(message_body.split(None, 2)[2])
+                        selected_user = message_body.split(None, 2)[1][1:].strip()
+                    else:
+                        char_id = None
+                        selected_user = message_body.split(None, 1)[1][1:].strip()
+
+                    if selected_user == message.from_user:
+                        self.character_persistent_class.remove_char(selected_user, message.from_user, char_id)
+
+                        if char_id is not None:
+                            body = "Du hast erfolgreich deinen {}. Charakter gelöscht".format(char_id)
+                        else:
+                            body = "Du hast erfolgreich deinen Charakter gelöscht."
+
+                        response_messages.append(TextMessage(
+                            to=message.from_user,
+                            chat_id=message.chat_id,
+                            body=body,
+                            keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Liste")])]
+                        ))
+
+                    elif message.from_user in [x.strip() for x in default_config.get("Admins", "admin1").split(',')]:
+                        self.character_persistent_class.remove_char(selected_user, message.from_user, char_id)
+
+                        if char_id is not None:
+                            body = "Du hast erfolgreich den {}. Charakter von @{} gelöscht.".format(char_id, selected_user)
+                        else:
+                            body = "Du hast erfolgreich den ersten Charakter von @{} gelöscht.".format(selected_user)
+
+                        response_messages.append(TextMessage(
+                            to=message.from_user,
+                            chat_id=message.chat_id,
+                            body=body,
+                            keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Liste")])]
+                        ))
+
+                    else:
+                        response_messages.append(TextMessage(
+                            to=message.from_user,
+                            chat_id=message.chat_id,
+                            body="Du kannst keine Charaktere von anderen Nutzern löschen.",
+                            keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Liste")])]
+                        ))
+
+                else:
+                    response_messages.append(TextMessage(
+                        to=message.from_user,
+                        chat_id=message.chat_id,
+                        body="Fehler beim Aufruf des Befehls. Siehe Hilfe.",
+                        keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
+                    ))
+
+            #
+            # Befehl Löschen (letzte)
+            #
+            elif message_command in ["letzte-löschen", "del-last", "delete-last"]:
+                if len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1][0] == "@":
+                    if len(message_body.split(None, 2)) == 3 and message_body.split(None, 2)[2].isdigit():
+                        char_id = int(message_body.split(None, 2)[2])
+                        selected_user = message_body.split(None, 2)[1][1:].strip()
+                    else:
+                        char_id = None
+                        selected_user = message_body.split(None, 1)[1][1:].strip()
+
+
+                    if selected_user == message.from_user:
+                        self.character_persistent_class.remove_last_char_change(selected_user, message.from_user)
+
+                        if char_id is not None:
+                            body = "Du hast erfolgreich die letzte Änderung am Charakter {} gelöscht.".format(char_id)
+                        else:
+                            body = "Du hast erfolgreich die letzte Änderung gelöscht."
+
+                        response_messages.append(TextMessage(
+                            to=message.from_user,
+                            chat_id=message.chat_id,
+                            body=body,
+                            keyboards=[SuggestedResponseKeyboard(responses=[
+                                TextResponse("Liste"),
+                                self.generate_text_response("Anzeigen", selected_user, char_id, message)
+                            ])]
+                        ))
+
+                    elif message.from_user in [x.strip() for x in default_config.get("Admins", "admin1").split(',')]:
+                        self.character_persistent_class.remove_last_char_change(selected_user, message.from_user)
+
+                        if char_id is not None:
+                            body = "Du hast erfolgreich die letzte Änderung des Charakters {} von @{} gelöscht.".format(char_id, selected_user)
+                        else:
+                            body = "Du hast erfolgreich die letzte Änderung des Charakters von @{} gelöscht.".format(selected_user)
+
+                        response_messages.append(TextMessage(
+                            to=message.from_user,
+                            chat_id=message.chat_id,
+                            body=body,
+                            keyboards=[SuggestedResponseKeyboard(responses=[
+                                TextResponse("Liste"),
+                                self.generate_text_response("Anzeigen", selected_user, char_id, message)
+                            ])]
+                        ))
+
+                    else:
+                        response_messages.append(TextMessage(
+                            to=message.from_user,
+                            chat_id=message.chat_id,
+                            body="Du kannst keine Charaktere von anderen Nutzern löschen.",
+                            keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Liste")])]
+                        ))
+
+                else:
+                    response_messages.append(TextMessage(
+                        to=message.from_user,
+                        chat_id=message.chat_id,
+                        body="Fehler beim Aufruf des Befehls. Siehe Hilfe.",
+                        keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
+                    ))
+
+            #
+            # Befehl Suche
+            #
+            elif message_command in ["suche", "search"]:
+                if len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1].strip() != "":
+                    query = message_body.split(None, 1)[1].strip()
+
+                    auth = self.check_auth(self.character_persistent_class, message)
+                    if auth is not True:
+                        return [auth]
+
+                    chars = self.character_persistent_class.search_char(query)
+
+                    if len(chars) == 0:
+                        response_messages.append(TextMessage(
+                            to=message.from_user,
+                            chat_id=message.chat_id,
+                            body="Für die Suchanfrage wurden keine Charaktere gefunden.",
+                            keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Liste")])]
+                        ))
+
+                    elif len(chars) == 1:
+                        (char_resp_msg, user_command_status, user_command_status_data) = self.create_char_messages(self.character_persistent_class, chars[0]['user_id'],
+                                                                       chars[0]['char_id'], chars[0], message, user_command_status, user_command_status_data)
+                        response_messages += char_resp_msg
+
+                    else:
+                        resp = []
+
+                        for char in chars:
+                            resp.append(self.generate_text_response("Anzeigen", char['user_id'], char['char_id'], message))
+
+                        resp.append(TextResponse("Liste"))
+                        response_messages.append(TextMessage(
+                            to=message.from_user,
+                            chat_id=message.chat_id,
+                            body="Es wurden mehrere Charaktere gefunden, die deiner Suchanfrage entsprechen.",
+                            keyboards=[SuggestedResponseKeyboard(responses=resp)]
+                        ))
+
+
+
+                else:
+                    response_messages.append(TextMessage(
+                        to=message.from_user,
+                        chat_id=message.chat_id,
+                        body="Fehler beim Aufruf des Befehls. Siehe Hilfe.",
+                        keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
+                    ))
+
+
+            #
+            # Befehl Auth
+            #
+            elif message_command in ["auth", "berechtigen", "authorize", "authorise"]:
+                if len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1][0] == "@":
+                    selected_user = message_body.split(None, 1)[1][1:].strip()
+                    result = self.character_persistent_class.auth_user(selected_user, message.from_user)
+
+                    if result is True:
+                        response_messages.append(TextMessage(
+                            to=message.from_user,
+                            chat_id=message.chat_id,
+                            body="Du hast erfolgreich den Nutzer @{} berechtigt.".format(selected_user)
+                        ))
+
+                    else:
+                        response_messages.append(TextMessage(
+                            to=message.from_user,
+                            chat_id=message.chat_id,
+                            body="Der Nutzer @{} konnte nicht berechtigt werden.\n\n".format(selected_user) +
+                                "Dies kann folgende Ursachen haben:\n" +
+                                "1. Der Nutzer ist bereits berechtigt.\n" +
+                                "2. Du bist nicht berechtigt, diesen Nutzer zu berechtigen."
+                        ))
+
+                else:
+                    response_messages.append(TextMessage(
+                        to=message.from_user,
+                        chat_id=message.chat_id,
+                        body="Fehler beim Aufruf des Befehls. Siehe Hilfe.",
+                        keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
+                    ))
+
+            #
+            # Befehl UnAuth
+            #
+            elif message_command in ["unauth", "entmachten", "unauthorize", "unauthorise"]:
+                if len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1][0] == "@":
+                    selected_user = message_body.split(None, 1)[1][1:].strip()
+                    result = self.character_persistent_class.unauth_user(selected_user, message.from_user)
+
+                    if result is True:
+                        response_messages.append(TextMessage(
+                            to=message.from_user,
+                            chat_id=message.chat_id,
+                            body="Du hast erfolgreich den Nutzer @{} entmächtigt.".format(selected_user)
+                        ))
+
+                    else:
+                        response_messages.append(TextMessage(
+                            to=message.from_user,
+                            chat_id=message.chat_id,
+                            body="Der Nutzer @{} konnte nicht entmächtigt werden.\n\n".format(selected_user) +
+                                 "Dies kann folgende Ursachen haben:\n" +
+                                 "Du bist nicht berechtigt, diesen Nutzer zu entmächtigen."
+                        ))
+
+                else:
+                    response_messages.append(TextMessage(
+                        to=message.from_user,
+                        chat_id=message.chat_id,
+                        body="Fehler beim Aufruf des Befehls. Siehe Hilfe.",
+                        keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
+                    ))
+
+            #
+            # Befehl Liste
+            #
+            elif message_command in ["liste", "list"]:
+                auth = self.check_auth(self.character_persistent_class, message)
+                if auth is not True:
+                    return [auth]
+
+                chars = self.character_persistent_class.get_all_users_with_chars()
+                user_ids = [item['user_id'] for item in chars]
+
+                chars_text = []
+                for char in chars:
+                    if char['chars_cnt'] > CharacterPersistentClass.get_min_char_id():
+                        chars_text.append("@{} ({})".format(char['user_id'], char['chars_cnt']))
+                    else:
+                        chars_text.append("@{}".format(char['user_id']))
+
+                response_messages.append(TextMessage(
+                    to=message.from_user,
+                    chat_id=message.chat_id,
+                    body=",\n".join(chars_text),
+                    keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Anzeigen @{}".format(x)) for x in user_ids])]
+                ))
+
+
+            #
+            # Befehl Vorlage
+            #
+            elif message_body in ["vorlage", "charaktervorlage", "boilerplate", "draft", "template"]:
+                response_messages.append(TextMessage(
+                    to=message.from_user,
+                    chat_id=message.chat_id,
+                    body=(
+                        "Die folgende Charaktervorlage kann genutzt werden um einen neuen Charakter im Rollenspiel zu erstellen.\n"
+                        "Dies ist eine notwendige Voraussetung um an dem Rollenspiel teilnehmen zu können.\n"
+                        "Bitte poste diese Vorlage ausgefüllt im Gruppenchannel #germanrpu\n"
+                        "Du kannst diese Vorlage über den Bot speichern, indem du die folgende Zeile als erste Zeile in den Charakterbogen schreibst:\n" +
+                        "@{} hinzufügen\n".format(bot_username)
+                    ),
+                    keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe"), TextResponse("Weitere-Beispiele")])]
+                ))
+                response_messages.append(TextMessage(
+                    to=message.from_user,
+                    chat_id=message.chat_id,
+                    body=(
+                        "Basics:\n"
+                        "Originaler Charakter oder OC?:\n\n"
+                        "Vorname:\n"
+                        "Nachname:\n"
+                        "Rufname/Spitzname:\n"
+                        "Alter:\n"
+                        "Blutgruppe:\n"
+                        "Geschlecht:\n\n"
+                        "Wohnort:\n\n"
+                        "Apparance\n\n"
+                        "Größe: \n"
+                        "Gewicht: \n"
+                        "Haarfarbe: \n"
+                        "Haarlänge:\n"
+                        "Augenfarbe: \n"
+                        "Aussehen:\n"
+                        "Merkmale:\n\n"
+                        "About You\n\n"
+                        "Persönlichkeit: (bitte mehr als 2 Sätze)\n\n"
+                        "Mag:\n"
+                        "Mag nicht:\n"
+                        "Hobbys:\n\n"
+                        "Wesen:\n\n"
+                        "Fähigkeiten:\n\n"
+                        "Waffen etc:\n\n\n"
+                        "Altagskleidung:\n\n"
+                        "Sonstiges\n\n"
+                        "(Kann alles beinhalten, was noch nicht im Steckbrief vorkam)"
+                    ),
+                    keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe"), TextResponse("Weitere-Beispiele")])]
+                ))
+
+
+            #
+            # Befehl Regeln
+            #
+            elif message_body in ["regeln", "rules"]:
+                response_messages.append(TextMessage(
+                    to=message.from_user,
+                    chat_id=message.chat_id,
+                    body=(
+                        "*~RULES~*\n\n"
+                        "1.\n"
+                        "Kein Sex! (flirten ist OK, Sex per PN)\n\n"
+                        "2.\n"
+                        "Sachen die man tut: *......*\n"
+                        "Sachen die man sagt: ohne Zeichen\n"
+                        "Sachen die man denkt: //..... //\n"
+                        "Sachen die nicht zum RP gehören (....)\n\n"
+                        "3.\n"
+                        "Es gibt 2 Gruppen:\n"
+                        "Die öffentliche ist für alle Gespräche, die nicht zum RP gehören.\n"
+                        "Die *REAL*RPG* Gruppe ist AUSSCHLIEẞLICH zum RPG zugelassen.\n\n"
+                        "4.\n"
+                        "Keine overpowerten und nur ernst gemeinte Charakter. (Es soll ja Spaß machen)\n\n"
+                        "5.\n"
+                        "RP Handlung:\n"
+                        "Schön guten Abend, Seid ihr es nicht auch leid? Von jeglichen Menschen aus eurer "
+                        "Heimat vertrieben zu werden? Gejagt, verfolgt oder auch nur verachtet zu werden? "
+                        "Dann kommt zu uns! Wir bauen zusammen eine Stadt auf. Eine Stadt wo nur Wesen "
+                        "wohnen und auch nur Eintritt haben.\n\n"
+                        "6.\n"
+                        "Sei Aktiv mindestens in 3 Tagen einmal!\n\n"
+                        "7.\n"
+                        "Keine Hardcore Horror Bilder. (höchstens per PN wenn ihr es unter bringen wollt mit der bestimmten Person)\n\n"
+                        "8.\n"
+                        "Wenn du ein Arsch bist oder dich einfach nicht an die Regeln hältst wirst "
+                        "du verwarnt oder gekickt. Wenn es unverdient war schreib uns an.\n\n"
+                        "9.\n"
+                        "Übertreibt es nicht mit dem Drama.\n\n"
+                        "10.\n"
+                        "Wenn du bis hier gelesen hast sag 'Luke ich bin dein Vater' Antworte in den nächsten 10 Min."
+                    ),
+                    keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Charaktervorlage"), TextResponse("Hilfe"), TextResponse("Weitere-Beispiele")])]
+                ))
+
+
+            #
+            # Befehl Hilfe
+            #
+            elif message_body in ["hilfe", "hilfe!", "help", "h", "?"]:
+                response_messages.append(TextMessage(
+                    to=message.from_user,
+                    chat_id=message.chat_id,
+                    body=(
+                        "Folgende Befehle sind möglich:\n"
+                        "Hilfe\n"
+                        "Regeln\n"
+                        "Vorlage\n"
+                        "Hinzufügen (<username>) <text>\n"
+                        "Ändern (<username>) (<char_id>) <text>\n"
+                        "Bild-setzen (<username>) (<char_id>)\n"
+                        "Anzeigen (<username>) (<char_id>|<char_name>)\n"
+                        "Löschen <eigener_username> (<char_id>)\n"
+                        "Letzte-Löschen <eigener_username> (<char_id>)\n"
+                        "Suchen <char_name>\n"
+                        "Berechtigen <username>\n"
+                        "Liste\n\n"
+                        "Die Befehle können ausgeführt werden indem man entweder den Bot direkt anschreibt oder in der Gruppe '@{} <Befehl>' eingibt.\n".format(bot_username) +
+                        "Beispiel: '@{} Liste'\n\n".format(bot_username) +
+                        "Der Parameter <char_id> ist nur relevant, wenn du mehr als einen Charakter speichern möchtest. Der erste Charakter "
+                        "hat immer die Id 1. Legst du einen weiteren an, erhält dieser die Id 2 usw.\n\n"
+                        "Der Bot kann nicht nur innerhalb einer Gruppe verwendet werden; man kann ihn auch direkt anschreiben (@{}) oder in PMs verwenden.".format(bot_username)
+                    ),
+                    keyboards=[SuggestedResponseKeyboard(responses=[
+                        TextResponse("Regeln"),
+                        TextResponse("Kurzbefehle"),
+                        TextResponse("Weitere-Beispiele"),
+                        TextResponse("Charaktervorlage")
+                    ])]
+                ))
+
+            elif message_body in ["hilfe2", "help2", "kurzbefehle"]:
+                response_messages.append(TextMessage(
+                    to=message.from_user,
+                    chat_id=message.chat_id,
+                    body=(
+                        "Folgende Kurz-Befehle sind möglich:\n"
+                        "help\n"
+                        "rules\n"
+                        "template\n"
+                        "add (<username>) <text>\n"
+                        "change (<username>) (<char_id>) <text>\n"
+                        "set-pic (<username>) (<char_id>)\n"
+                        "show (<username>) (<char_id>|<char_name>)\n"
+                        "del <eigener_username> (<char_id>)\n"
+                        "del-last <eigener_username> (<char_id>)\n"
+                        "search <char_name>\n"
+                        "auth <username>\n"
+                        "list\n"
+                    ),
+                    keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("rules"), TextResponse("Weitere-Beispiele"), TextResponse("Template")])]
+                ))
+            elif message_body in ["admin-hilfe", "admin-help"]:
+                auth = self.check_auth(self.character_persistent_class, message)
+                if auth is not True:
+                    return  [auth]
+
+                response_messages.append(TextMessage(
+                    to=message.from_user,
+                    chat_id=message.chat_id,
+                    body=(
+                        "Folgende Admin-Befehle sind möglich:\n"
+                        "auth/Berechtigen <username>\n"
+                        "unauth/Entmachten <username>\n"
+                        "del/Löschen <username> (<char_id>)\n"
+                        "del-last/Letzte-Löschen <username> (<char_id>)\n"
+                    ),
+                    keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("rules"), TextResponse("Weitere-Beispiele"), TextResponse("Template")])]
+                ))
+            elif message_body in ["weitere-beispiele", "more-examples"]:
+                response_messages.append(TextMessage(
+                    to=message.from_user,
+                    chat_id=message.chat_id,
+                    body=(
+                        "Weitere Beispiele\n"
+                        "Alle Beispiele sind in einzelnen Abschnitten mittels ----- getrennt.\n\n"
+                        "------\n"
+                        "@{} Hinzufügen @{}\n".format(bot_username, message.from_user) +
+                        "Hier kann der Text zum Charakter stehen\n"
+                        "Zeilenumbrüche sind erlaubt\n"
+                        "In diesem Beispiel wurde der Nickname angegeben\n"
+                        "------\n"
+                        "@{} Ändern\n".format(bot_username) +
+                        "Hier kann der Text zum Charakter stehen\n"
+                        "Die Befehle Ändern und Hinzufügen bewirken das gleiche\n"
+                        "Wird kein Benutzername angegeben so betrifft die Änderung bzw. das Hinzufügen einen selbst\n"
+                        "------\n"
+                        "@{} Anzeigen @ismil1110\n".format(bot_username) +
+                        "------\n"
+                        "@{} Anzeigen\n".format(bot_username) +
+                        "------\n"
+                        "@{} Löschen @{}\n".format(bot_username, message.from_user) +
+                        "------\n"
+                        "@{} Liste\n".format(bot_username) +
+                        "------\n"
+                        "Bitte beachten, dass alle Befehle an den Bot mit @{} beginnen müssen. Die Nachricht darf".format(bot_username) +
+                        " mit keinem Leerzeichen oder sonstigen Zeichen beginnen, da ansonsten die Nachricht nicht an den Bot weitergeleitet wird.\n"
+                        "Wenn du bei dieser Nachricht auf Antworten tippst, werden dir unten 4 der oben gezeigten Beispiele als Vorauswahl angeboten"
+                    ),
+                    keyboards=[SuggestedResponseKeyboard(responses=[
+                        TextResponse("Hilfe"),
+                        TextResponse((
+                            "@{} Hinzufügen @{} ".format(bot_username, message.from_user) +
+                            "Zeilenumbrüche sind nicht Pflicht."
+                        )),
+                        TextResponse("@{} Anzeigen @ismil1110".format(bot_username)),
+                        TextResponse("@{} Anzeigen".format(bot_username)),
+                        TextResponse("@{} Liste".format(bot_username))
+                    ])]
+                ))
+
+            #
+            # Befehl einer
+            #
+            elif message_body in ["anderer bot"]:
+                response_messages.append(TextMessage(
+                    to=message.from_user,
+                    chat_id=message.chat_id,
+                    body=u"Es kann nur einen geben! \U0001F608"
+                ))
+
+
+
+            #
+            # Befehl unbekannt
+            #
+            elif message_command != "":
+                  response_messages.append(TextMessage(
+                    to=message.from_user,
+                    chat_id=message.chat_id,
+                    body="Sorry {}, den Befehl '{}' kenne ich nicht.".format(user.first_name, message_command),
+                    keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
+                ))
             else:
-
                 response_messages.append(TextMessage(
                     to=message.from_user,
                     chat_id=message.chat_id,
                     body="Sorry {}, ich habe dich nicht verstanden.".format(user.first_name),
                     keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
                 ))
+        elif isinstance(message, PictureMessage):
+            status_obj = self.character_persistent_class.get_user_command_status(message.from_user)
+            if status_obj is None or status_obj['status'] != CharacterPersistentClass.STATUS_SET_PICTURE:
+                response_messages.append(TextMessage(
+                    to=message.from_user,
+                    chat_id=message.chat_id,
+                    body="Sorry {}, mit diesem Bild kann ich leider nichts anfangen.".format(user.first_name),
+                    keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
+                ))
 
-            # We're sending a batch of messages. We can send up to 25 messages at a time (with a limit of
-            # 5 messages per user).
+            else:
+                success = self.character_persistent_class.set_char_pic(status_obj['data']['user_id'], message.from_user, message.pic_url, status_obj['data']['char_id'])
+                if success is True:
+                    body = "Alles klar! Das Bild wurde gesetzt."
+                    show_resp = self.generate_text_response("Anzeigen", status_obj['data']['user_id'], status_obj['data']['char_id'], message)
+                else:
+                    body = "Beim hochladen ist ein Fehler aufgetreten. Bitte versuche es erneut."
+                    show_resp = self.generate_text_response("Bild-setzen", status_obj['data']['user_id'], status_obj['data']['char_id'], message)
+                    user_command_status = status_obj['status']
+                    user_command_status_data = status_obj['data']
 
-            character_persistent_class.update_user_command_status(message.from_user, user_command_status, user_command_status_data)
-            del character_persistent_class
-            self.kik_api.send_messages(response_messages)
+                response_messages.append(TextMessage(
+                    to=message.from_user,
+                    chat_id=message.chat_id,
+                    body=body,
+                    keyboards=[SuggestedResponseKeyboard(responses=[
+                        show_resp,
+                        TextResponse("Liste")
+                    ])]
+                ))
 
-        return Response(status=200)
+        # If its not a text message, give them another chance to use the suggested responses
+        else:
+
+            response_messages.append(TextMessage(
+                to=message.from_user,
+                chat_id=message.chat_id,
+                body="Sorry {}, ich habe dich nicht verstanden.".format(user.first_name),
+                keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
+            ))
+
+        # We're sending a batch of messages. We can send up to 25 messages at a time (with a limit of
+        # 5 messages per user).
+
+        self.character_persistent_class.update_user_command_status(message.from_user, user_command_status, user_command_status_data)
+        self.character_persistent_class.commit()
+        return response_messages
+
 
     @staticmethod
     def generate_text_response(command, user_id, char_id, message, force_username=False):
-        return TextResponse(KikBot.generate_text(command, user_id, char_id, message, force_username=force_username))
+        return TextResponse(MessageController.generate_text(command, user_id, char_id, message, force_username=force_username))
 
     @staticmethod
     def generate_text(command, user_id, char_id, message, force_username=False):
@@ -997,17 +1005,17 @@ class KikBot(Flask):
         if max_char_id > CharacterPersistentClass.get_min_char_id():
             dyn_message_data = {}
             if char_id > CharacterPersistentClass.get_min_char_id():
-                dyn_message_data['left'] = KikBot.generate_text("Anzeigen", selected_user, char_id - 1, message)
+                dyn_message_data['left'] = MessageController.generate_text("Anzeigen", selected_user, char_id - 1, message)
                 keyboard_responses.append(TextResponse(u"\U00002B05\U0000FE0F"))
             if char_id < max_char_id:
-                dyn_message_data['right'] = KikBot.generate_text("Anzeigen", selected_user, char_id + 1, message)
+                dyn_message_data['right'] = MessageController.generate_text("Anzeigen", selected_user, char_id + 1, message)
                 keyboard_responses.append(TextResponse(u"\U000027A1\U0000FE0F"))
             if dyn_message_data != {}:
                 user_command_status = CharacterPersistentClass.STATUS_DYN_MESSAGES
                 user_command_status_data = dyn_message_data
 
         if selected_user == message.from_user:
-            keyboard_responses.append(KikBot.generate_text_response("Bild-setzen", selected_user, char_id, message))
+            keyboard_responses.append(MessageController.generate_text_response("Bild-setzen", selected_user, char_id, message))
 
         keyboard_responses.append(TextResponse("Liste"))
 
@@ -1068,6 +1076,10 @@ class CharacterPersistentClass:
             self.connection = sqlite3.connect(database_path)
             self.connection.row_factory = sqlite3.Row
             self.cursor = self.connection.cursor()
+
+    def commit(self):
+        if self.connection is not None:
+            self.connection.commit()
 
     @staticmethod
     def get_min_char_id():
