@@ -107,8 +107,8 @@ class MessageController:
                 return [TextMessage(
                     to=message.from_user,
                     chat_id=message.chat_id,
-                    body="Hi {}, ich bin der Character-Bot der Gruppe #germanrpu\n".format(user.first_name) +
-                         "Für weitere Informationen tippe auf Antworten und dann auf Hilfe.",
+                    body="Hi {}, ich bin der Steckbrief-Bot der Gruppe #germanrpu\n".format(user.first_name) +
+                         "Für weitere Informationen tippe auf Antwort und dann auf Hilfe.",
                     keyboards=[SuggestedResponseKeyboard(responses=[
                         TextResponse("Hilfe"),
                         TextResponse("Regeln"),
@@ -668,16 +668,17 @@ class MessageController:
             #
             # Befehl Vorlage
             #
-            elif message_body in ["vorlage", "charaktervorlage", "boilerplate", "draft", "template"]:
+            elif message_body in ["vorlage", "charaktervorlage", "boilerplate", "draft", "template", "steckbrief", "steckbriefvorlage", "stecki"]:
                 response_messages.append(TextMessage(
                     to=message.from_user,
                     chat_id=message.chat_id,
                     body=(
-                        "Die folgende Charaktervorlage kann genutzt werden um einen neuen Charakter im Rollenspiel zu erstellen.\n"
-                        "Dies ist eine notwendige Voraussetung um an dem Rollenspiel teilnehmen zu können.\n"
+                        "Die folgende Charaktervorlage kann genutzt werden um einen neuen Charakter im RPG zu erstellen.\n"
+                        "Dies ist eine notwendige Voraussetung um am RPG teilnehmen zu können.\n"
                         "Bitte poste diese Vorlage ausgefüllt im Gruppenchannel #germanrpu\n"
-                        "Du kannst diese Vorlage über den Bot speichern, indem du die folgende Zeile als erste Zeile in den Charakterbogen schreibst:\n" +
-                        "@{} hinzufügen\n".format(bot_username)
+                        "Wichtig: Bitte lasse die Schlüsselwörter (Vorname:, Nachname:, etc.) stehen.\n"
+                        "Möchtest du die Vorlage nicht über den Bot speichern, dann entferne bitte die erste Zeile.\n"
+                        "Hast du bereits einen Charakter und möchtest diesen aktualisieren, dann schreibe in der ersten Zeile 'ändern' anstatt 'hinzufügen'"
                     ),
                     keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe"), TextResponse("Weitere-Beispiele")])]
                 ))
@@ -685,6 +686,7 @@ class MessageController:
                     to=message.from_user,
                     chat_id=message.chat_id,
                     body=(
+                        "@{} hinzufügen".format(bot_username) +
                         "Basics:\n"
                         "Originaler Charakter oder OC?:\n\n"
                         "Vorname:\n"
@@ -782,18 +784,24 @@ class MessageController:
                         "Letzte-Löschen <eigener_username> (<char_id>)\n"
                         "Suchen <char_name>\n"
                         "Berechtigen <username>\n"
-                        "Liste\n\n"
+                        "Liste\n"
+                        "Quellcode\n\n"
                         "Die Befehle können ausgeführt werden indem man entweder den Bot direkt anschreibt oder in der Gruppe '@{} <Befehl>' eingibt.\n".format(bot_username) +
                         "Beispiel: '@{} Liste'\n\n".format(bot_username) +
                         "Der Parameter <char_id> ist nur relevant, wenn du mehr als einen Charakter speichern möchtest. Der erste Charakter "
-                        "hat immer die Id 1. Legst du einen weiteren an, erhält dieser die Id 2 usw.\n\n"
-                        "Der Bot kann nicht nur innerhalb einer Gruppe verwendet werden; man kann ihn auch direkt anschreiben (@{}) oder in PMs verwenden.".format(bot_username)
+                        "hat immer die char_id 1. Legst du einen weiteren an, erhält dieser die char_id 2 usw.\n\n"
+                        "Der Bot kann nicht nur innerhalb einer Gruppe verwendet werden; man kann ihn auch direkt anschreiben (@{}) oder in PMs verwenden.\n\n".format(bot_username) +
+                        "Erläuterungen der Parameter:\n"
+                        "<username>: Benutzername des Nutzers; beginnt immer mit @\n"
+                        "<char_id>: Alle Charaktere eines Nutzers werden durchnummeriert. Es handelt sich um eine Zahl größer als 1\n"
+                        "<char_name>: Name des Charakers ohne Leerzeichen"
                     ),
                     keyboards=[SuggestedResponseKeyboard(responses=[
                         TextResponse("Regeln"),
                         TextResponse("Kurzbefehle"),
                         TextResponse("Weitere-Beispiele"),
-                        TextResponse("Charaktervorlage")
+                        TextResponse("Charaktervorlage"),
+                        TextResponse("Quellcode")
                     ])]
                 ))
 
