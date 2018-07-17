@@ -25,6 +25,7 @@ import configparser
 import datetime
 import json
 import os
+import random
 import re
 import sqlite3
 import time
@@ -102,13 +103,14 @@ class MessageController:
         # Check if the user has sent a text message.
         elif isinstance(message, TextMessage):
             message_body = message.body.lower()
+            message_body_c = message.body
 
             if message_body == "":
                 return [TextMessage(
                     to=message.from_user,
                     chat_id=message.chat_id,
-                    body="Hi {}, ich bin der Character-Bot der Gruppe #germanrpu\n".format(user.first_name) +
-                         "Für weitere Informationen tippe auf Antworten und dann auf Hilfe.",
+                    body="Hi {}, ich bin der Steckbrief-Bot der Gruppe #germanrpu\n".format(user.first_name) +
+                         "Für weitere Informationen tippe auf Antwort und dann auf Hilfe.",
                     keyboards=[SuggestedResponseKeyboard(responses=[
                         TextResponse("Hilfe"),
                         TextResponse("Regeln"),
@@ -320,7 +322,7 @@ class MessageController:
             #
             # Befehl Anzeigen
             #
-            elif message_command in ["anzeigen", "show"]:
+            elif message_command in ["anzeigen", "show", "steckbrief", "stecki"]:
                 char_data = None
                 chars = None
                 char_name = None
@@ -668,16 +670,17 @@ class MessageController:
             #
             # Befehl Vorlage
             #
-            elif message_body in ["vorlage", "charaktervorlage", "boilerplate", "draft", "template"]:
+            elif message_body in ["vorlage", "charaktervorlage", "boilerplate", "draft", "template", "steckbrief", "steckbriefvorlage", "stecki"]:
                 response_messages.append(TextMessage(
                     to=message.from_user,
                     chat_id=message.chat_id,
                     body=(
-                        "Die folgende Charaktervorlage kann genutzt werden um einen neuen Charakter im Rollenspiel zu erstellen.\n"
-                        "Dies ist eine notwendige Voraussetung um an dem Rollenspiel teilnehmen zu können.\n"
+                        "Die folgende Charaktervorlage kann genutzt werden um einen neuen Charakter im RPG zu erstellen.\n"
+                        "Dies ist eine notwendige Voraussetung um am RPG teilnehmen zu können.\n"
                         "Bitte poste diese Vorlage ausgefüllt im Gruppenchannel #germanrpu\n"
-                        "Du kannst diese Vorlage über den Bot speichern, indem du die folgende Zeile als erste Zeile in den Charakterbogen schreibst:\n" +
-                        "@{} hinzufügen\n".format(bot_username)
+                        "Wichtig: Bitte lasse die Schlüsselwörter (Vorname:, Nachname:, etc.) stehen.\n"
+                        "Möchtest du die Vorlage nicht über den Bot speichern, dann entferne bitte die erste Zeile.\n"
+                        "Hast du bereits einen Charakter und möchtest diesen aktualisieren, dann schreibe in der ersten Zeile 'ändern' anstatt 'hinzufügen'"
                     ),
                     keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe"), TextResponse("Weitere-Beispiele")])]
                 ))
@@ -685,6 +688,7 @@ class MessageController:
                     to=message.from_user,
                     chat_id=message.chat_id,
                     body=(
+                        "@{} hinzufügen".format(bot_username) +
                         "Basics:\n"
                         "Originaler Charakter oder OC?:\n\n"
                         "Vorname:\n"
@@ -782,18 +786,26 @@ class MessageController:
                         "Letzte-Löschen <eigener_username> (<char_id>)\n"
                         "Suchen <char_name>\n"
                         "Berechtigen <username>\n"
-                        "Liste\n\n"
+                        "Liste\n"
+                        "Würfeln (<Anzahl Augen>|<kommagetrennte Liste>)\n"
+                        "Münze\n"
+                        "Quellcode\n\n"
                         "Die Befehle können ausgeführt werden indem man entweder den Bot direkt anschreibt oder in der Gruppe '@{} <Befehl>' eingibt.\n".format(bot_username) +
                         "Beispiel: '@{} Liste'\n\n".format(bot_username) +
                         "Der Parameter <char_id> ist nur relevant, wenn du mehr als einen Charakter speichern möchtest. Der erste Charakter "
-                        "hat immer die Id 1. Legst du einen weiteren an, erhält dieser die Id 2 usw.\n\n"
-                        "Der Bot kann nicht nur innerhalb einer Gruppe verwendet werden; man kann ihn auch direkt anschreiben (@{}) oder in PMs verwenden.".format(bot_username)
+                        "hat immer die char_id 1. Legst du einen weiteren an, erhält dieser die char_id 2 usw.\n\n"
+                        "Der Bot kann nicht nur innerhalb einer Gruppe verwendet werden; man kann ihn auch direkt anschreiben (@{}) oder in PMs verwenden.\n\n".format(bot_username) +
+                        "Erläuterungen der Parameter:\n"
+                        "<username>: Benutzername des Nutzers; beginnt immer mit @\n"
+                        "<char_id>: Alle Charaktere eines Nutzers werden durchnummeriert. Es handelt sich um eine Zahl größer als 1\n"
+                        "<char_name>: Name des Charakers ohne Leerzeichen"
                     ),
                     keyboards=[SuggestedResponseKeyboard(responses=[
                         TextResponse("Regeln"),
                         TextResponse("Kurzbefehle"),
                         TextResponse("Weitere-Beispiele"),
-                        TextResponse("Charaktervorlage")
+                        TextResponse("Charaktervorlage"),
+                        TextResponse("Quellcode")
                     ])]
                 ))
 
@@ -815,6 +827,9 @@ class MessageController:
                         "search <char_name>\n"
                         "auth <username>\n"
                         "list\n"
+                        "dice (<Anzahl Augen>|<kommagetrennte Liste>)\n"
+                        "coin\n"
+                        "source"
                     ),
                     keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("rules"), TextResponse("Weitere-Beispiele"), TextResponse("Template")])]
                 ))
@@ -861,6 +876,12 @@ class MessageController:
                         "------\n"
                         "@{} Liste\n".format(bot_username) +
                         "------\n"
+                        "@{} Hilfe\n".format(bot_username) +
+                        "------\n"
+                        "@{} Würfeln 8\n".format(bot_username) +
+                        "------\n"
+                        "@{} Würfeln Rot, Grün, Blau, Schwarz, Weiß\n".format(bot_username) +
+                        "------\n"
                         "Bitte beachten, dass alle Befehle an den Bot mit @{} beginnen müssen. Die Nachricht darf".format(bot_username) +
                         " mit keinem Leerzeichen oder sonstigen Zeichen beginnen, da ansonsten die Nachricht nicht an den Bot weitergeleitet wird.\n"
                         "Wenn du bei dieser Nachricht auf Antworten tippst, werden dir unten 4 der oben gezeigten Beispiele als Vorauswahl angeboten"
@@ -871,10 +892,38 @@ class MessageController:
                             "@{} Hinzufügen @{} ".format(bot_username, message.from_user) +
                             "Zeilenumbrüche sind nicht Pflicht."
                         )),
-                        TextResponse("@{} Anzeigen @ismil1110".format(bot_username)),
-                        TextResponse("@{} Anzeigen".format(bot_username)),
-                        TextResponse("@{} Liste".format(bot_username))
+                        TextResponse("Anzeigen @ismil1110".format(bot_username)),
+                        TextResponse("Anzeigen".format(bot_username)),
+                        TextResponse("Liste".format(bot_username)),
+                        TextResponse("Hilfe".format(bot_username)),
+                        TextResponse("Würfeln 8".format(bot_username)),
+                        TextResponse("Würfeln Rot, Grün, Blau, Schwarz, Weiß".format(bot_username))
                     ])]
+                ))
+
+            #
+            # Befehl Würfeln
+            #
+            elif message_command in ["würfel", "würfeln", "dice", u"\U0001F3B2", "münze", "coin"]:
+
+                if message_command in ["münze", "coin"]:
+                    possibilities = ["Kopf", "Zahl"]
+                    thing = "Die Münze zeigt"
+                elif len(message_body.split(None, 1)) == 1 or message_body.split(None, 1)[1].strip() == "":
+                    possibilities = list(range(1,7))
+                    thing = "Der Würfel zeigt"
+                elif message_body.split(None, 1)[1].isdigit():
+                    count = int(message_body.split(None, 1)[1])
+                    possibilities = list(range(1,count+1)) if count > 0 else [1]
+                    thing = "Der Würfel zeigt"
+                else:
+                    possibilities = [x.strip() for x in message_body_c.split(None, 1)[1].split(',')]
+                    thing = "Ich wähle"
+
+                response_messages.append(TextMessage(
+                    to=message.from_user,
+                    chat_id=message.chat_id,
+                    body="{}: {}".format(thing, possibilities[random.randint(0, len(possibilities)-1)])
                 ))
 
             #
@@ -897,8 +946,6 @@ class MessageController:
                     body="Der Quellcode dieses Bots ist Open-Source und unter der Apache License Version 2.0 lizensiert.\n" +
                         "Der Quellcode ist zu finden unter: https://github.com/slideup-benni/rpcharbot"
                 ))
-
-
 
             #
             # Befehl unbekannt
@@ -1029,7 +1076,6 @@ class MessageController:
                 to=message.from_user,
                 chat_id=message.chat_id,
                 pic_url=pic_url,
-                #keyboards=[SuggestedResponseKeyboard(responses=keyboard_responses)]
             ))
 
         body = "{}\n\n--- erstellt von @{} am {}".format(char_data['text'], char_data['creator_id'],
