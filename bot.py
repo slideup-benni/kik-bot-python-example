@@ -688,7 +688,7 @@ class MessageController:
                     to=message.from_user,
                     chat_id=message.chat_id,
                     body=(
-                        "@{} hinzufügen".format(bot_username) +
+                        "@{} hinzufügen \n".format(bot_username) +
                         "Basics:\n"
                         "Originaler Charakter oder OC?:\n\n"
                         "Vorname:\n"
@@ -1141,7 +1141,7 @@ class CharacterPersistentClass:
             max_char_id = max(max_char_id, char_data['char_id'])
         return max_char_id
 
-    def add_char(self, user_id, creator_id, text, char_name=None):
+    def add_char(self, user_id, creator_id, text):
         self.connect_database()
 
         max_char_id = self.get_max_char_id(user_id)
@@ -1259,7 +1259,7 @@ class CharacterPersistentClass:
             char_id = self.get_min_char_id()
 
         self.cursor.execute((
-            "SELECT id, char_id, char_name, text, creator_id, created "
+            "SELECT id, char_id, text, creator_id, created "
             "FROM  characters "
             "WHERE user_id LIKE ? AND char_id=? AND deleted IS NULL "
             "ORDER BY created DESC "
@@ -1296,7 +1296,7 @@ class CharacterPersistentClass:
         self.connect_database()
 
         self.cursor.execute((
-            "SELECT id, char_id, char_name, text, creator_id, MAX(created) AS created "
+            "SELECT id, char_id, text, creator_id, MAX(created) AS created "
             "FROM characters "
             "WHERE user_id LIKE ? AND deleted IS NULL "
             "GROUP BY char_id"
@@ -1373,10 +1373,10 @@ class CharacterPersistentClass:
         self.connect_database()
 
         self.cursor.execute((
-            "SELECT id, char_id, char_name, text, creator_id, MAX(created) AS created "
+            "SELECT id, char_id, text, creator_id, MAX(created) AS created "
             "FROM characters "
             "WHERE user_id=? AND deleted IS NULL AND text LIKE ? "
-            "GROUP BY char_id"
+            "GROUP BY user_id, char_id"
         ), [user_id, "%"+name+"%"])
         chars_raw = self.cursor.fetchall()
         chars = []
@@ -1391,10 +1391,10 @@ class CharacterPersistentClass:
         self.connect_database()
 
         self.cursor.execute((
-            "SELECT id, user_id, char_id, char_name, text, creator_id, MAX(created) AS created "
+            "SELECT id, user_id, char_id, text, creator_id, MAX(created) AS created "
             "FROM characters "
             "WHERE deleted IS NULL AND text LIKE ? "
-            "GROUP BY char_id"
+            "GROUP BY user_id, char_id"
         ), ["%"+query+"%"])
         chars_raw = self.cursor.fetchall()
         chars = []
