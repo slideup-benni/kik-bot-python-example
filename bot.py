@@ -23,12 +23,15 @@ language governing permissions and limitations under the License.
 """
 import configparser
 import datetime
+import hashlib
 import json
 import os
 import random
 import re
 import sqlite3
 import time
+import traceback
+
 import requests
 from configparser import SectionProxy
 from mimetypes import guess_extension
@@ -65,7 +68,21 @@ def incoming():
     message_controller = MessageController()
 
     for message in messages:
-        response_messages += message_controller.process_message(message, kik_api.get_user(message.from_user))
+        try:
+            response_messages += message_controller.process_message(message, kik_api.get_user(message.from_user))
+        except:
+            error_id = hashlib.md5((str(int(time.time())) + message.from_user).encode('utf-8')).hexdigest()
+            print("Error: " + error_id + " --- " + traceback.format_exc())
+
+            response_messages += [TextMessage(
+                to=message.from_user,
+                chat_id=message.chat_id,
+                body="Leider ist ein Fehler aufgetreten. Bitte versuche es erneut.\n\n" +
+                     "Sollte der Fehler weiterhin auftreten, mach bitte einen Screenshot und sprich @ismil1110 per PM an.\n\n" +
+                     "Fehler-Informationen: {}".format(error_id),
+                keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
+            )]
+
         kik_api.send_messages(response_messages)
 
     return Response(status=200)
@@ -582,6 +599,148 @@ class MessageController:
                         keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
                     ))
 
+            #
+            # Befehl Setze Befehl Tastaturen
+            #
+            elif message_command in ["setze-befehl-tastaturen", "set-command-keyboards", "set-cmd-keyboards"]:
+                if message.from_user.lower() in [x.strip().lower() for x in default_config.get("Admins", "admin1").split(',')]:
+                    if len(message_body.split(None, 2)) == 3:
+                        keyboards = message_body_c.split(None, 2)[2].strip()
+                        static_command = message_body.split(None, 2)[1].strip()
+                        static_message = self.character_persistent_class.get_static_message(static_command)
+
+                        if static_message is None:
+                            response_messages.append(TextMessage(
+                                to=message.from_user,
+                                chat_id=message.chat_id,
+                                body="Der Befehl '{}' existiert nicht.".format(static_message['command']),
+                                keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Admin-Hilfe")])]
+                            ))
+
+                        else:
+                            static_command = static_message["command"]
+                            static_message = self.character_persistent_class.set_static_message_keyboard(static_command, [x.strip() for x in keyboards.split(',')])
+
+                            example_alt_commands = "Alt-Befehl1, Alt-Befehl2, etc."
+                            if static_message["alt_commands"] is not None:
+                                example_alt_commands = ", ".join(json.loads(static_message["alt_commands"]))
+
+                            response_messages.append(TextMessage(
+                                to=message.from_user,
+                                chat_id=message.chat_id,
+                                body="Du hast erfolgreich die Tastaturen für den statischen Befehl '{}' aktualisiert.\n".format(static_message["command"]) +
+                                "Du kannst auch alternative Befehle (wie z.B. 'h' für Hilfe oder 'rules' für Regeln) hinzufügen. Dies geht mit dem Befehl:\n\n" +
+                                "@{} Setze-Befehl-Alternative-Befehle {} {}".format(bot_username, static_message["command"], example_alt_commands),
+                                keyboards=[SuggestedResponseKeyboard(responses=[TextResponse(static_message['command']), TextResponse("Admin-Hilfe")])]
+                            ))
+                    else:
+                        response_messages.append(TextMessage(
+                            to=message.from_user,
+                            chat_id=message.chat_id,
+                            body="Fehler beim Aufruf des Befehls. Siehe Admin-Hilfe.",
+                            keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Admin-Hilfe")])]
+                        ))
+                else:
+                    response_messages.append(TextMessage(
+                        to=message.from_user,
+                        chat_id=message.chat_id,
+                        body="Du kannst keine statischen Antworten setzen."
+                    ))
+
+            #
+            # Befehl Setze Befehl Alternative Befehle
+            #
+            elif message_command in ["setze-befehl-alternative-befehle", "set-command-alternative-commands", "set-cmd-alt-cmd"]:
+                if message.from_user.lower() in [x.strip().lower() for x in default_config.get("Admins", "admin1").split(',')]:
+                    if len(message_body.split(None, 2)) == 3:
+                        alt_commands = message_body_c.split(None, 2)[2].strip()
+                        static_command = message_body.split(None, 2)[1].strip()
+                        static_message = self.character_persistent_class.get_static_message(static_command)
+
+                        if static_message is None:
+                            response_messages.append(TextMessage(
+                                to=message.from_user,
+                                chat_id=message.chat_id,
+                                body="Der Befehl '{}' existiert nicht.".format(static_message['command']),
+                                keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Admin-Hilfe")])]
+                            ))
+
+                        else:
+                            static_command = static_message["command"]
+                            static_message = self.character_persistent_class.set_static_message_alt_commands(static_command, [x.strip() for x in alt_commands.split(',')])
+
+                            example_keyboards = "Hilfe, Liste"
+                            if static_message["response_keyboards"] is not None:
+                                example_keyboards = ", ".join(json.loads(static_message["response_keyboards"]))
+
+                            response_messages.append(TextMessage(
+                                to=message.from_user,
+                                chat_id=message.chat_id,
+                                body="Du hast erfolgreich die alternativen Befehle für den Befehl '{}' aktualisiert.\n".format(static_message["command"]) +
+                                "Du kannst jetzt noch mit dem folgenden Befehl die Antwort-Tastaturen setzen (Komma-getrennt):\n\n" +
+                                "@{} Setze-Befehl-Tastaturen {} {}".format(bot_username, static_message["command"], example_keyboards),
+                                keyboards=[SuggestedResponseKeyboard(responses=[TextResponse(static_message['command']), TextResponse("Admin-Hilfe")])]
+                            ))
+                    else:
+                        response_messages.append(TextMessage(
+                            to=message.from_user,
+                            chat_id=message.chat_id,
+                            body="Fehler beim Aufruf des Befehls. Siehe Admin-Hilfe.",
+                            keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Admin-Hilfe")])]
+                        ))
+                else:
+                    response_messages.append(TextMessage(
+                        to=message.from_user,
+                        chat_id=message.chat_id,
+                        body="Du kannst keine statischen Antworten setzen."
+                    ))
+
+            #
+            # Befehl Setze Antwort
+            #
+            elif message_command in ["setze-befehl", "set-command", "set-cmd"]:
+                if message.from_user.lower() in [x.strip().lower() for x in default_config.get("Admins", "admin1").split(',')]:
+                    if len(message_body.split(None, 2)) == 3:
+                        text = message_body_c.split(None, 2)[2].strip()
+                        static_command = message_body.split(None, 2)[1].strip()
+                        static_message = self.character_persistent_class.get_static_message(static_command)
+
+                        if static_message is not None:
+                            static_command = static_message["command"]
+
+                        static_message = self.character_persistent_class.set_static_message(static_command, text)
+
+                        example_keyboards = "Hilfe, Liste"
+                        if static_message["response_keyboards"] is not None:
+                            example_keyboards = ", ".join(json.loads(static_message["response_keyboards"]))
+
+                        example_alt_commands = "Alt-Befehl1, Alt-Befehl2, etc."
+                        if static_message["alt_commands"] is not None:
+                            example_alt_commands = ", ".join(json.loads(static_message["alt_commands"]))
+
+                        response_messages.append(TextMessage(
+                            to=message.from_user,
+                            chat_id=message.chat_id,
+                            body="Du hast erfolgreich die statische Antwort auf den Befehl '{}' aktualisiert.\n".format(static_message["command"]) +
+                                "Du kannst jetzt noch mit dem folgenden Befehl die Antwort-Tastaturen setzen (Komma-getrennt):\n\n" +
+                                "@{} Setze-Befehl-Tastaturen {} {}\n\n\n".format(bot_username, static_message["command"], example_keyboards) +
+                                "Du kannst auch alternative Befehle (wie z.B. 'h' für Hilfe oder 'rules' für Regeln) hinzufügen. Dies geht mit dem Befehl:\n\n" +
+                                "@{} Setze-Befehl-Alternative-Befehle {} {}".format(bot_username, static_message["command"], example_alt_commands),
+                            keyboards=[SuggestedResponseKeyboard(responses=[TextResponse(static_message["command"]), TextResponse("Admin-Hilfe")])]
+                        ))
+                    else:
+                        response_messages.append(TextMessage(
+                            to=message.from_user,
+                            chat_id=message.chat_id,
+                            body="Fehler beim Aufruf des Befehls. Siehe Admin-Hilfe.",
+                            keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Admin-Hilfe")])]
+                        ))
+                else:
+                    response_messages.append(TextMessage(
+                        to=message.from_user,
+                        chat_id=message.chat_id,
+                        body="Du kannst keine statischen Antworten setzen."
+                    ))
 
             #
             # Befehl Auth
@@ -691,172 +850,18 @@ class MessageController:
                     ),
                     keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe"), TextResponse("Weitere-Beispiele")])]
                 ))
+
+                template_message = self.character_persistent_class.get_static_message('nur-vorlage')
+
                 response_messages.append(TextMessage(
                     to=message.from_user,
                     chat_id=message.chat_id,
                     body=(
-                        "@{} hinzufügen \n".format(bot_username) +
-                        "Basics:\n"
-                        "Originaler Charakter oder OC?:\n\n"
-                        "Vorname:\n"
-                        "Nachname:\n"
-                        "Rufname/Spitzname:\n"
-                        "Alter:\n"
-                        "Blutgruppe:\n"
-                        "Geschlecht:\n\n"
-                        "Wohnort:\n\n"
-                        "Apparance\n\n"
-                        "Größe: \n"
-                        "Gewicht: \n"
-                        "Haarfarbe: \n"
-                        "Haarlänge:\n"
-                        "Augenfarbe: \n"
-                        "Aussehen:\n"
-                        "Merkmale:\n\n"
-                        "About You\n\n"
-                        "Persönlichkeit: (bitte mehr als 2 Sätze)\n\n"
-                        "Mag:\n"
-                        "Mag nicht:\n"
-                        "Hobbys:\n\n"
-                        "Wesen:\n\n"
-                        "Fähigkeiten:\n\n"
-                        "Waffen etc:\n\n\n"
-                        "Altagskleidung:\n\n"
-                        "Sonstiges\n\n"
-                        "(Kann alles beinhalten, was noch nicht im Steckbrief vorkam)"
+                        "@{} hinzufügen \n".format(bot_username) + template_message["response"]
                     ),
                     keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe"), TextResponse("Weitere-Beispiele")])]
                 ))
 
-
-            #
-            # Befehl Regeln
-            #
-            elif message_body in ["regeln", "rules"]:
-                response_messages.append(TextMessage(
-                    to=message.from_user,
-                    chat_id=message.chat_id,
-                    body=(
-                        "*~RULES~*\n\n"
-                        "1.\n"
-                        "Kein Sex! (flirten ist OK, Sex per PN)\n\n"
-                        "2.\n"
-                        "Sachen die man tut: *......*\n"
-                        "Sachen die man sagt: ohne Zeichen\n"
-                        "Sachen die man denkt: //..... //\n"
-                        "Sachen die nicht zum RP gehören (....)\n\n"
-                        "3.\n"
-                        "Es gibt 2 Gruppen:\n"
-                        "Die öffentliche ist für alle Gespräche, die nicht zum RP gehören.\n"
-                        "Die *REAL*RPG* Gruppe ist AUSSCHLIEẞLICH zum RPG zugelassen.\n\n"
-                        "4.\n"
-                        "Keine overpowerten und nur ernst gemeinte Charakter. (Es soll ja Spaß machen)\n\n"
-                        "5.\n"
-                        "RP Handlung:\n"
-                        "Schön guten Abend, Seid ihr es nicht auch leid? Von jeglichen Menschen aus eurer "
-                        "Heimat vertrieben zu werden? Gejagt, verfolgt oder auch nur verachtet zu werden? "
-                        "Dann kommt zu uns! Wir bauen zusammen eine Stadt auf. Eine Stadt wo nur Wesen "
-                        "wohnen und auch nur Eintritt haben.\n\n"
-                        "6.\n"
-                        "Sei Aktiv mindestens in 3 Tagen einmal!\n\n"
-                        "7.\n"
-                        "Keine Hardcore Horror Bilder. (höchstens per PN wenn ihr es unter bringen wollt mit der bestimmten Person)\n\n"
-                        "8.\n"
-                        "Wenn du ein Arsch bist oder dich einfach nicht an die Regeln hältst wirst "
-                        "du verwarnt oder gekickt. Wenn es unverdient war schreib uns an.\n\n"
-                        "9.\n"
-                        "Übertreibt es nicht mit dem Drama.\n\n"
-                        "10.\n"
-                        "Wenn du bis hier gelesen hast sag 'Luke ich bin dein Vater' Antworte in den nächsten 10 Min."
-                    ),
-                    keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Charaktervorlage"), TextResponse("Hilfe"), TextResponse("Weitere-Beispiele")])]
-                ))
-
-
-            #
-            # Befehl Hilfe
-            #
-            elif message_body in ["hilfe", "hilfe!", "help", "h", "?"]:
-                response_messages.append(TextMessage(
-                    to=message.from_user,
-                    chat_id=message.chat_id,
-                    body=(
-                        "Folgende Befehle sind möglich:\n"
-                        "Hilfe\n"
-                        "Regeln\n"
-                        "Vorlage\n"
-                        "Hinzufügen (<username>) <text>\n"
-                        "Ändern (<username>) (<char_id>) <text>\n"
-                        "Bild-setzen (<username>) (<char_id>)\n"
-                        "Anzeigen (<username>) (<char_id>|<char_name>)\n"
-                        "Löschen <eigener_username> (<char_id>)\n"
-                        "Letzte-Löschen <eigener_username> (<char_id>)\n"
-                        "Suchen <char_name>\n"
-                        "Berechtigen <username>\n"
-                        "Liste\n"
-                        "Würfeln (<Anzahl Augen>|<kommagetrennte Liste>)\n"
-                        "Münze\n"
-                        "Quellcode\n\n"
-                        "Die Befehle können ausgeführt werden indem man entweder den Bot direkt anschreibt oder in der Gruppe '@{} <Befehl>' eingibt.\n".format(bot_username) +
-                        "Beispiel: '@{} Liste'\n\n".format(bot_username) +
-                        "Der Parameter <char_id> ist nur relevant, wenn du mehr als einen Charakter speichern möchtest. Der erste Charakter "
-                        "hat immer die char_id 1. Legst du einen weiteren an, erhält dieser die char_id 2 usw.\n\n"
-                        "Der Bot kann nicht nur innerhalb einer Gruppe verwendet werden; man kann ihn auch direkt anschreiben (@{}) oder in PMs verwenden.\n\n".format(bot_username) +
-                        "Erläuterungen der Parameter:\n"
-                        "<username>: Benutzername des Nutzers; beginnt immer mit @\n"
-                        "<char_id>: Alle Charaktere eines Nutzers werden durchnummeriert. Es handelt sich um eine Zahl größer als 1\n"
-                        "<char_name>: Name des Charakers ohne Leerzeichen"
-                    ),
-                    keyboards=[SuggestedResponseKeyboard(responses=[
-                        TextResponse("Regeln"),
-                        TextResponse("Kurzbefehle"),
-                        TextResponse("Weitere-Beispiele"),
-                        TextResponse("Charaktervorlage"),
-                        TextResponse("Quellcode")
-                    ])]
-                ))
-
-            elif message_body in ["hilfe2", "help2", "kurzbefehle"]:
-                response_messages.append(TextMessage(
-                    to=message.from_user,
-                    chat_id=message.chat_id,
-                    body=(
-                        "Folgende Kurz-Befehle sind möglich:\n"
-                        "help\n"
-                        "rules\n"
-                        "template\n"
-                        "add (<username>) <text>\n"
-                        "change (<username>) (<char_id>) <text>\n"
-                        "set-pic (<username>) (<char_id>)\n"
-                        "show (<username>) (<char_id>|<char_name>)\n"
-                        "del <eigener_username> (<char_id>)\n"
-                        "del-last <eigener_username> (<char_id>)\n"
-                        "search <char_name>\n"
-                        "auth <username>\n"
-                        "list\n"
-                        "dice (<Anzahl Augen>|<kommagetrennte Liste>)\n"
-                        "coin\n"
-                        "source"
-                    ),
-                    keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("rules"), TextResponse("Weitere-Beispiele"), TextResponse("Template")])]
-                ))
-            elif message_body in ["admin-hilfe", "admin-help"]:
-                auth = self.check_auth(self.character_persistent_class, message)
-                if auth is not True:
-                    return  [auth]
-
-                response_messages.append(TextMessage(
-                    to=message.from_user,
-                    chat_id=message.chat_id,
-                    body=(
-                        "Folgende Admin-Befehle sind möglich:\n"
-                        "auth/Berechtigen <username>\n"
-                        "unauth/Entmachten <username>\n"
-                        "del/Löschen <username> (<char_id>)\n"
-                        "del-last/Letzte-Löschen <username> (<char_id>)\n"
-                    ),
-                    keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("rules"), TextResponse("Weitere-Beispiele"), TextResponse("Template")])]
-                ))
             elif message_body in ["weitere-beispiele", "more-examples"]:
                 response_messages.append(TextMessage(
                     to=message.from_user,
@@ -940,36 +945,31 @@ class MessageController:
                 ))
 
             #
-            # Befehl einer
-            #
-            elif message_body in ["anderer bot"]:
-                response_messages.append(TextMessage(
-                    to=message.from_user,
-                    chat_id=message.chat_id,
-                    body=u"Es kann nur einen geben! \U0001F608"
-                ))
-
-            #
-            # Befehl Quellcode
-            #
-            elif message_command in ["quellcode", "source", "sourcecode", "lizenz", "licence"]:
-                response_messages.append(TextMessage(
-                    to=message.from_user,
-                    chat_id=message.chat_id,
-                    body="Der Quellcode dieses Bots ist Open-Source und unter der Apache License Version 2.0 lizensiert.\n" +
-                        "Der Quellcode ist zu finden unter: https://github.com/slideup-benni/rpcharbot"
-                ))
-
-            #
-            # Befehl unbekannt
+            # Befehl statische Antwort / keine Antwort
             #
             elif message_command != "":
-                  response_messages.append(TextMessage(
-                    to=message.from_user,
-                    chat_id=message.chat_id,
-                    body="Sorry {}, den Befehl '{}' kenne ich nicht.".format(user.first_name, message_command),
-                    keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
-                ))
+                static_message = self.character_persistent_class.get_static_message(message_command)
+
+                if static_message is not None:
+                    if static_message["response_keyboards"] is None:
+                        keyboards = ["Hilfe"]
+                    else:
+                        keyboards = json.loads(static_message["response_keyboards"])
+
+                    response_messages.append(TextMessage(
+                        to=message.from_user,
+                        chat_id=message.chat_id,
+                        body=static_message["response"],
+                        keyboards=[SuggestedResponseKeyboard(responses=list(map(TextResponse, keyboards)))]
+                    ))
+
+                else:
+                    response_messages.append(TextMessage(
+                        to=message.from_user,
+                        chat_id=message.chat_id,
+                        body="Sorry {}, den Befehl '{}' kenne ich nicht.".format(user.first_name, message_command),
+                        keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
+                    ))
             else:
                 response_messages.append(TextMessage(
                     to=message.from_user,
@@ -1462,52 +1462,69 @@ class CharacterPersistentClass:
         else:
             return json.loads(status_data['status'])
 
+    def set_static_message(self, command, response):
+        self.connect_database()
+
+        static_message = self.get_static_message(command)
+        if static_message is None:
+            self.cursor.execute((
+                "INSERT INTO static_messages "
+                "(command, response) "
+                "VALUES (?, ?) "
+            ), [command, response])
+        else:
+            self.cursor.execute((
+                "UPDATE static_messages "
+                "SET response = ? "
+                "WHERE command LIKE ? "
+            ), [response, command])
+
+        return self.get_static_message(command)
+
+    def set_static_message_keyboard(self, command, keyboard):
+        self.connect_database()
+
+        static_message = self.get_static_message(command)
+        if static_message is not None:
+            self.cursor.execute((
+                "UPDATE static_messages "
+                "SET response_keyboards = ? "
+                "WHERE command LIKE ? "
+            ), [json.dumps(keyboard), command])
+
+        return self.get_static_message(command)
+
+    def set_static_message_alt_commands(self, command, alt_commands):
+        self.connect_database()
+
+        static_message = self.get_static_message(command)
+        if static_message is not None:
+            self.cursor.execute((
+                "UPDATE static_messages "
+                "SET alt_commands = ? "
+                "WHERE command LIKE ? "
+            ), [json.dumps(alt_commands), command])
+
+        return self.get_static_message(command)
+
+    def get_static_message(self, command):
+        self.connect_database()
+
+        self.cursor.execute((
+            "SELECT * "
+            "FROM static_messages "
+            "WHERE command LIKE ? OR alt_commands LIKE ? "
+            "LIMIT 1"
+        ), [command, "%\""+command+"\"%"])
+
+        return self.cursor.fetchone()
+
 
 def create_database(database_path):
     connection = sqlite3.connect(database_path)
     cursor = connection.cursor()
-    cursor.execute((
-        "CREATE TABLE characters ("
-        "    id INTEGER PRIMARY KEY AUTOINCREMENT,"
-        "    user_id TEXT NOT NULL,"
-        "    char_id INTEGER DEFAULT 1,"
-        "    text TEXT NOT NULL,"
-        "    creator_id TEXT NOT NULL,"
-        "    created INTEGER NOT NULL,"
-        "    deletor_id TEXT,"
-        "    deleted INTEGER"
-        "); "
-    ))
-    cursor.execute((
-        "CREATE TABLE character_pictures ("
-        "    id INTEGER PRIMARY KEY AUTOINCREMENT,"
-        "    user_id TEXT NOT NULL,"
-        "    char_id INTEGER DEFAULT 1,"
-        "    picture_filename TEXT NOT NULL,"
-        "    creator_id TEXT NOT NULL,"
-        "    created INTEGER NOT NULL,"
-        "    deletor_id TEXT,"
-        "    deleted INTEGER"
-        "); "
-    ))
-    cursor.execute((
-        "CREATE TABLE users ("
-        "    id INTEGER PRIMARY KEY AUTOINCREMENT,"
-        "    user_id TEXT NOT NULL,"
-        "    creator_id TEXT NOT NULL,"
-        "    created INTEGER NOT NULL,"
-        "    deletor_id TEXT,"
-        "    deleted INTEGER"
-        ")"
-    ))
-    cursor.execute((
-        "CREATE TABLE user_command_status ( "
-        "    id INTEGER PRIMARY KEY AUTOINCREMENT, "
-        "    user_id TEXT NOT NULL, "
-        "    status TEXT NOT NULL, "
-        "    updated INTEGER NOT NULL "
-        ")"
-    ))
+
+    cursor.executescript(open('database.sql', 'r').read())
 
     connection.commit()
     connection.close()
