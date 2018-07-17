@@ -3,10 +3,17 @@
 # These environment variables are sometimes needed by the running daemons
 export USER=slup0000
 export HOME=/home/slup0000
- 
+export FLASK_APP=bot
+
 # Include the user-specific profile
 . $HOME/.bash_profile
  
 # Now let's go!
-cd $HOME/rpchatbot/
-exec /usr/local/bin/python3.6 -u $HOME/rpcharbot/bot.py -c $HOME/rpcharbot/config.ini 2>&1
+cd $HOME/rpcharbot/
+
+trap "exit" INT TERM ERR
+trap "kill 0" EXIT
+
+exec env RPCHARBOT_CONF=config.ini /usr/local/bin/python3.6 -m flask run --with-threads --host 0.0.0.0 --port 64122 2>&1 &
+
+wait

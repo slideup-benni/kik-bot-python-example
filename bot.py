@@ -21,61 +21,53 @@ Unless required by applicable law or agreed to in writing, software distributed 
 language governing permissions and limitations under the License.
 
 """
-import argparse
+import configparser
+import datetime
 import json
+import os
 import re
+import sqlite3
+import time
+import requests
 from configparser import SectionProxy
 from mimetypes import guess_extension
 from pathlib import Path
-
-import requests
 from flask import Flask, request, Response, send_from_directory
 from kik import KikApi, Configuration
 from kik.messages import messages_from_json, TextMessage, PictureMessage, \
     SuggestedResponseKeyboard, TextResponse, StartChattingMessage
-import os, sqlite3, time, datetime, configparser
 
-class KikBot(Flask):
-    """ Flask kik bot application class"""
-
-    def __init__(self, kik_api, import_name, static_path=None, static_url_path=None, static_folder="static",
-                 template_folder="templates", instance_path=None, instance_relative_config=False,
-                 root_path=None):
-
-        self.kik_api = kik_api
-
-        super(KikBot, self).__init__(import_name, static_path, static_url_path, static_folder, template_folder,
-                                     instance_path, instance_relative_config, root_path)
-
-        self.route("/incoming", methods=["POST"])(self.incoming)
-        self.route("/picture/<path:path>", methods=["GET"])(self.picture)
-
-    def picture(self, path):
-        picture_path = default_config.get("PicturePath", "{home}/pictures").format(home=str(Path.home()))
-        return send_from_directory(picture_path, path)
-
-    def incoming(self):
-        """Handle incoming messages to the bot. All requests are authenticated using the signature in
-        the 'X-Kik-Signature' header, which is built using the bot's api key (set in main() below).
-        :return: Response
-        """
-        # verify that this is a valid request
-        if not self.kik_api.verify_signature(
-                request.headers.get("X-Kik-Signature"), request.get_data()):
-            return Response(status=403)
-
-        messages = messages_from_json(request.json["messages"])
-
-        response_messages = []
-        message_controller = MessageController()
+app = Flask(__name__)
 
 
-        for message in messages:
-            response_messages += message_controller.process_message(message, self.kik_api.get_user(message.from_user))
-            self.kik_api.send_messages(response_messages)
+@app.route("/picture/<path:path>", methods=["GET"])
+def picture(path):
+    picture_path = default_config.get("PicturePath", "{home}/pictures").format(home=str(Path.home()))
+    return send_from_directory(picture_path, path)
 
-        return Response(status=200)
 
+@app.route("/incoming", methods=["POST"])
+def incoming():
+    global kik_api
+    """Handle incoming messages to the bot. All requests are authenticated using the signature in
+    the 'X-Kik-Signature' header, which is built using the bot's api key (set in main() below).
+    :return: Response
+    """
+    # verify that this is a valid request
+    if not kik_api.verify_signature(
+            request.headers.get("X-Kik-Signature"), request.get_data()):
+        return Response(status=403)
+
+    messages = messages_from_json(request.json["messages"])
+
+    response_messages = []
+    message_controller = MessageController()
+
+    for message in messages:
+        response_messages += message_controller.process_message(message, kik_api.get_user(message.from_user))
+        kik_api.send_messages(response_messages)
+
+    return Response(status=200)
 
 
 class MessageController:
@@ -87,12 +79,10 @@ class MessageController:
 
     @staticmethod
     def reload_config():
-        #reread config
         global config
         global default_config
-        config.read(args.config)
+        config.read(configFile)
         default_config = config['DEFAULT']  # type: SectionProxy
-
 
     def process_message(self, message, user):
         response_messages = []
@@ -897,6 +887,17 @@ class MessageController:
                     body=u"Es kann nur einen geben! \U0001F608"
                 ))
 
+            #
+            # Befehl Quellcode
+            #
+            elif message_command in ["quellcode", "source", "sourcecode", "lizenz", "licence"]:
+                response_messages.append(TextMessage(
+                    to=message.from_user,
+                    chat_id=message.chat_id,
+                    body="Der Quellcode dieses Bots ist Open-Source und unter der Apache License Version 2.0 lizensiert.\n" +
+                        "Der Quellcode ist zu finden unter: https://github.com/slideup-benni/rpcharbot"
+                ))
+
 
 
             #
@@ -988,7 +989,9 @@ class MessageController:
             return TextMessage(
                 to=message.from_user,
                 chat_id=message.chat_id,
-                body="Du bist nicht berechtigt diesen Befehl auszuführen. Bitte melde dich in der Gruppe #germanrpu und erfrage eine Berechtigung.",
+                body="Du bist nicht berechtigt diesen Befehl auszuführen!\n"+
+                     "Bitte melde dich in der Gruppe #germanrpu und erfrage eine Berechtigung.\n\n" +
+                     "Achtung: Aufgrund eines Bugs von Seiten Kik",
                 keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
             )
         return True
@@ -1310,10 +1313,8 @@ class CharacterPersistentClass:
         return self.cursor.fetchone() is not None
 
     def is_unauth_user(self, user_id):
-        #if user_id in [x.strip() for x in default_config.get("Admins", "admin1").split(',')]:
-        #    return False
-
         self.connect_database()
+
         self.cursor.execute((
             "SELECT id "
             "FROM  users "
@@ -1454,27 +1455,22 @@ def create_database(database_path):
     print ("Datenbank {} angelegt".format(os.path.basename(database_path)))
 
 
-if __name__ == "__main__":
-    """ Main program """
+configFile = os.environ.get('RPCHARBOT_CONF', 'config.ini')
+print("Using conf {}.".format(configFile))
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--config', '-c', type=str, required=True, dest='config', help='The config-File')
-    args = parser.parse_args()
+config = configparser.ConfigParser()
+config.read(configFile)
+default_config = config['DEFAULT'] # type: SectionProxy
+bot_username = default_config.get("BotUsername", "botname")
+print("Bot Username: {}".format(bot_username))
 
-    config = configparser.ConfigParser()
-    config.read(args.config)
-    default_config = config['DEFAULT'] # type: SectionProxy
+database_path = default_config.get("DatabasePath", "{home}/database.db").format(home=str(Path.home()))
+if not os.path.exists(database_path):
+    print("Datenbank {} nicht vorhanden - Datenbank wird anglegt.".format(os.path.basename(database_path)))
+    create_database(database_path)
 
-    database_path = default_config.get("DatabasePath", "{home}/database.db").format(home=str(Path.home()))
-    if not os.path.exists(database_path):
-        print("Datenbank {} nicht vorhanden - Datenbank wird anglegt.".format(os.path.basename(database_path)))
-        create_database(database_path)
-
-    bot_username = default_config.get("BotUsername", "botname")
-    kik = KikApi(bot_username, default_config.get("BotAuthCode", "abcdef01-2345-6789-abcd-ef0123456789"))
-    # For simplicity, we're going to set_configuration on startup. However, this really only needs to happen once
-    # or if the configuration changes. In a production setting, you would only issue this call if you need to change
-    # the configuration, and not every time the bot starts.
-    kik.set_configuration(Configuration(webhook="{}:{}/incoming".format(default_config.get("RemoteHostIP", "www.example.com"), default_config.get("RemotePort", "8080"))))
-    app = KikBot(kik, __name__)
-    app.run(threaded=True, port=int(default_config.get("LocalPort", 8080)), host=default_config.get("LocalIP", "0.0.0.0"), debug=False)
+kik_api = KikApi(bot_username, default_config.get("BotAuthCode", "abcdef01-2345-6789-abcd-ef0123456789"))
+# For simplicity, we're going to set_configuration on startup. However, this really only needs to happen once
+# or if the configuration changes. In a production setting, you would only issue this call if you need to change
+# the configuration, and not every time the bot starts.
+kik_api.set_configuration(Configuration(webhook="{}:{}/incoming".format(default_config.get("RemoteHostIP", "www.example.com"), default_config.get("RemotePort", "8080"))))

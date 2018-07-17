@@ -2,9 +2,12 @@
 daemon/log/main/*
 daemon/log/supervise
 daemon/supervise
+daemon/down
 pictures/*
 .idea
-config.ini
+/*.ini
+__pycache__
 
 !daemon/log/main/.gitkeep
 !pictures/.gitkeep
+!/_config.ini
