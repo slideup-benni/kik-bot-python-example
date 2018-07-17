@@ -37,7 +37,7 @@ from configparser import SectionProxy
 from mimetypes import guess_extension
 from pathlib import Path
 from flask import Flask, request, Response, send_from_directory
-from kik import KikApi, Configuration
+from kik import KikApi, Configuration, KikError
 from kik.messages import messages_from_json, TextMessage, PictureMessage, \
     SuggestedResponseKeyboard, TextResponse, StartChattingMessage
 
@@ -818,17 +818,30 @@ class MessageController:
                 chars = self.character_persistent_class.get_all_users_with_chars()
                 user_ids = [item['user_id'] for item in chars]
 
-                chars_text = []
+                body = ""
+                number = 1
                 for char in chars:
-                    if char['chars_cnt'] > CharacterPersistentClass.get_min_char_id():
-                        chars_text.append("@{} ({})".format(char['user_id'], char['chars_cnt']))
+                    b = "{}.: {}\n".format(number, self.get_name(char['user_id'])) + \
+                        "Nutzername: @{}\n".format(char['user_id']) + \
+                        "Anz. Charaktere: {}\n".format(char['chars_cnt']) + \
+                        "letzte Änderung: {}".format(datetime.datetime.fromtimestamp(char['created']).strftime('%d.%m.%Y'))
+
+                    number += 1
+
+                    if len(body) + len(b) + 4 < 1500:
+                        body += "\n\n" + b
                     else:
-                        chars_text.append("@{}".format(char['user_id']))
+                        response_messages.append(TextMessage(
+                            to=message.from_user,
+                            chat_id=message.chat_id,
+                            body=body
+                        ))
+                        body = b
 
                 response_messages.append(TextMessage(
                     to=message.from_user,
                     chat_id=message.chat_id,
-                    body=",\n".join(chars_text),
+                    body=body,
                     keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Anzeigen @{}".format(x)) for x in user_ids])]
                 ))
 
@@ -1062,10 +1075,15 @@ class MessageController:
         keyboard_responses = []
 
         max_char_id = character_persistent_class.get_max_char_id(selected_user)
+        body_char_appendix = ""
         if char_id is None:
             char_id = CharacterPersistentClass.get_min_char_id()
 
         if max_char_id > CharacterPersistentClass.get_min_char_id():
+            body_char_appendix = "\n\n(Weitere Charaktere des Nutzers vorhanden: {} und {} zum navigieren)".format(
+                u"\U00002B05\U0000FE0F",
+                u"\U000027A1\U0000FE0F"
+            )
             dyn_message_data = {}
             if char_id > CharacterPersistentClass.get_min_char_id():
                 dyn_message_data['left'] = MessageController.generate_text("Anzeigen", selected_user, char_id - 1, message)
@@ -1091,8 +1109,14 @@ class MessageController:
                 pic_url=pic_url,
             ))
 
-        body = "{}\n\n--- erstellt von @{} am {}".format(char_data['text'], char_data['creator_id'],
-                                                         datetime.datetime.fromtimestamp(char_data['created']).strftime('%Y-%m-%d %H:%M:%S'))
+        body = "{}\n\n---\nCharakter von {}\nErstellt von {}\nErstellt am {}{}".format(
+            char_data['text'],
+            MessageController.get_name(selected_user, append_user_id=True),
+            MessageController.get_name(char_data['creator_id'], append_user_id=True),
+            datetime.datetime.fromtimestamp(char_data['created']).strftime('%Y-%m-%d %H:%M:%S'),
+            body_char_appendix
+        )
+
         body_split = body.split("\n")
         new_body = ""
         for b in body_split:
@@ -1116,6 +1140,48 @@ class MessageController:
             keyboards=[SuggestedResponseKeyboard(responses=keyboard_responses)]
         ))
         return (response_messages, user_command_status, user_command_status_data)
+
+    @staticmethod
+    def get_name(user_id, append_user_id=False):
+        global kik_api_cache
+
+        user = kik_api_cache.get_user(user_id)
+        if user is not None and append_user_id is True:
+            return user.first_name + " " + user.last_name + " (@{})".format(user_id)
+        elif user is not None:
+            return user.first_name + " " + user.last_name
+        else:
+            return "@" + user_id
+
+
+class KikApiCache:
+
+    def __init__(self):
+        self.users = {}
+
+    def get_user(self, user_id):
+
+        try:
+            if int(time.time()) > self.users[user_id.lower()]['last-request'] + 6*60*60:
+                self.request_user(user_id.lower())
+        except KeyError:
+            self.request_user(user_id.lower())
+
+        return self.users[user_id.lower()]["data"]
+
+    def request_user(self, user_id):
+
+        print("Kik API: Request User {}".format(user_id))
+
+        try:
+            user_data = kik_api.get_user(user_id.lower())
+        except KikError:
+            user_data = None
+
+        self.users[user_id.lower()] = {
+            "data": user_data,
+            "last-request": int(time.time())
+        }
 
 
 class CharacterPersistentClass:
@@ -1321,7 +1387,7 @@ class CharacterPersistentClass:
         self.connect_database()
 
         self.cursor.execute((
-            "SELECT id, user_id, MAX(char_id) AS chars_cnt "
+            "SELECT id, user_id, MAX(char_id) AS chars_cnt, created "
             "FROM characters "
             "WHERE deleted IS NULL "
             "GROUP BY user_id "
@@ -1546,6 +1612,7 @@ if not os.path.exists(database_path):
     create_database(database_path)
 
 kik_api = KikApi(bot_username, default_config.get("BotAuthCode", "abcdef01-2345-6789-abcd-ef0123456789"))
+kik_api_cache = KikApiCache()
 # For simplicity, we're going to set_configuration on startup. However, this really only needs to happen once
 # or if the configuration changes. In a production setting, you would only issue this call if you need to change
 # the configuration, and not every time the bot starts.
