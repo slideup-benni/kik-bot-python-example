@@ -436,7 +436,7 @@ class MessageController:
                             keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Liste")])]
                         ))
 
-                    elif message.from_user in [x.strip() for x in default_config.get("Admins", "admin1").split(',')]:
+                    elif message.from_user.lower() in [x.strip().lower() for x in default_config.get("Admins", "admin1").split(',')]:
                         self.character_persistent_class.remove_char(selected_user, message.from_user, char_id)
 
                         if char_id is not None:
@@ -498,7 +498,7 @@ class MessageController:
                             ])]
                         ))
 
-                    elif message.from_user in [x.strip() for x in default_config.get("Admins", "admin1").split(',')]:
+                    elif message.from_user.lower() in [x.strip().lower() for x in default_config.get("Admins", "admin1").split(',')]:
                         self.character_persistent_class.remove_last_char_change(selected_user, message.from_user)
 
                         if char_id is not None:
@@ -1331,7 +1331,7 @@ class CharacterPersistentClass:
 
     def auth_user(self, user_id, creator_id):
         if self.is_auth_user(user_id) or \
-                creator_id not in [x.strip() for x in default_config.get("Admins", "admin1").split(',')] and (self.is_unauth_user(user_id) or self.is_auth_user(creator_id) is False):
+                creator_id.lower() not in [x.strip().lower() for x in default_config.get("Admins", "admin1").split(',')] and (self.is_unauth_user(user_id) or self.is_auth_user(creator_id) is False):
             return False
 
         self.connect_database()
@@ -1345,7 +1345,7 @@ class CharacterPersistentClass:
         return True
 
     def unauth_user(self, user_id, deletor_id):
-        if deletor_id not in [x.strip() for x in default_config.get("Admins", "admin1").split(',')]:
+        if deletor_id.lower() not in [x.strip().lower() for x in default_config.get("Admins", "admin1").split(',')]:
             return False
 
         self.connect_database()
@@ -1359,7 +1359,7 @@ class CharacterPersistentClass:
         return True
 
     def is_auth_user(self, user_id):
-        if user_id in [x.strip() for x in default_config.get("Admins", "admin1").split(',')]:
+        if user_id.lower() in [x.strip().lower() for x in default_config.get("Admins", "admin1").split(',')]:
             return True
 
         self.connect_database()
