@@ -125,11 +125,18 @@ class MessageController:
                 status_obj = self.character_persistent_class.get_user_command_status(message.from_user)
                 if status_obj['status'] == CharacterPersistentClass.STATUS_DYN_MESSAGES:
                     message_body = status_obj['data']['left'].lower()
+                    message_body_c = status_obj['data']['left']
 
             elif message_body == u"\U000027A1\U0000FE0F":
                 status_obj = self.character_persistent_class.get_user_command_status(message.from_user)
                 if status_obj['status'] == CharacterPersistentClass.STATUS_DYN_MESSAGES:
                     message_body = status_obj['data']['right'].lower()
+                    message_body_c = status_obj['data']['right']
+            elif message_body == u"\U0001F504":
+                status_obj = self.character_persistent_class.get_user_command_status(message.from_user)
+                if status_obj['status'] == CharacterPersistentClass.STATUS_DYN_MESSAGES:
+                    message_body = status_obj['data']['redo'].lower()
+                    message_body_c = status_obj['data']['redo']
 
             message_command = message_body.split(None,1)[0]
 
@@ -144,7 +151,7 @@ class MessageController:
                     if selected_user != message.from_user and auth is not True:
                         return [auth]
 
-                    char_id = self.character_persistent_class.add_char(message_body.split(None, 2)[1][1:].strip(), message.from_user, message.body.split(None, 2)[2].strip())
+                    char_id = self.character_persistent_class.add_char(message_body.split(None, 2)[1][1:].strip(), message.from_user, message_body_c.split(None, 2)[2].strip())
 
                     if char_id == CharacterPersistentClass.get_min_char_id():
                         body = "Alles klar! Der erste Charakter für @{} wurde hinzugefügt.".format(selected_user)
@@ -163,7 +170,7 @@ class MessageController:
                         ])]
                     ))
                 elif len(message_body.split(None,1)) == 2 and message_body.split(None,1)[1][0] != "@":
-                    char_id = self.character_persistent_class.add_char(message.from_user, message.from_user, message.body.split(None, 1)[1].strip())
+                    char_id = self.character_persistent_class.add_char(message.from_user, message.from_user, message_body_c.split(None, 1)[1].strip())
 
                     if char_id == CharacterPersistentClass.get_min_char_id():
                         body = "Alles klar! Dein erster Charakter wurde hinzugefügt."
@@ -198,7 +205,7 @@ class MessageController:
 
                     user_id = message_body.split(None, 3)[1][1:].strip()
                     char_id = int(message_body.split(None, 3)[2])
-                    text = message.body.split(None, 3)[3].strip()
+                    text = message_body_c.split(None, 3)[3].strip()
 
                     auth = self.check_auth(self.character_persistent_class, message)
                     if user_id != message.from_user and auth is not True:
@@ -219,7 +226,7 @@ class MessageController:
                 elif len(message_body.split(None, 2)) == 3 and message_body.split(None, 2)[1].isdigit() and message_body.split(None, 2)[2].strip() != "":
 
                     char_id = int(message_body.split(None, 2)[1])
-                    text = message.body.split(None, 2)[2].strip()
+                    text = message_body_c.split(None, 2)[2].strip()
 
                     self.character_persistent_class.change_char(message.from_user, message.from_user, text, char_id)
                     response_messages.append(TextMessage(
@@ -240,7 +247,7 @@ class MessageController:
                     if user_id != message.from_user and auth is not True:
                         return [auth]
 
-                    self.character_persistent_class.change_char(message_body.split(None, 2)[1][1:].strip(), message.from_user, message.body.split(None, 2)[2].strip())
+                    self.character_persistent_class.change_char(message_body.split(None, 2)[1][1:].strip(), message.from_user, message_body_c.split(None, 2)[2].strip())
                     response_messages.append(TextMessage(
                         to=message.from_user,
                         chat_id=message.chat_id,
@@ -253,7 +260,7 @@ class MessageController:
                         ])]
                     ))
                 elif len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1][0] != "@":
-                    self.character_persistent_class.change_char(message.from_user, message.from_user, message.body.split(None, 1)[1].strip())
+                    self.character_persistent_class.change_char(message.from_user, message.from_user, message_body_c.split(None, 1)[1].strip())
                     response_messages.append(TextMessage(
                         to=message.from_user,
                         chat_id=message.chat_id,
@@ -920,10 +927,16 @@ class MessageController:
                     possibilities = [x.strip() for x in message_body_c.split(None, 1)[1].split(',')]
                     thing = "Ich wähle"
 
+                user_command_status = CharacterPersistentClass.STATUS_DYN_MESSAGES
+                user_command_status_data = {
+                    'redo': message_body_c
+                }
+
                 response_messages.append(TextMessage(
                     to=message.from_user,
                     chat_id=message.chat_id,
-                    body="{}: {}".format(thing, possibilities[random.randint(0, len(possibilities)-1)])
+                    body="{}: {}".format(thing, possibilities[random.randint(0, len(possibilities)-1)]),
+                    keyboards=[SuggestedResponseKeyboard(responses=[TextResponse(u"\U0001F504"), TextResponse("Hilfe")])]
                 ))
 
             #
