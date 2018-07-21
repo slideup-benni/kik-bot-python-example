@@ -426,6 +426,71 @@ class MessageController:
                                                                    char_id, char_data, message, user_command_status, user_command_status_data)
                     response_messages += char_resp_msg
 
+            #
+            # Befehl Verschieben
+            #
+            elif message_command in ["verschieben", "move"]:
+                if len(message_body.split(None, 2)) == 3 and message_body.split(None, 2)[1][0] == "@" and message_body.split(None, 2)[2][0] == "@":
+                    if len(message_body.split(None, 3)) == 4 and message_body.split(None, 3)[3].isdigit():
+                        char_id = int(message_body.split(None, 3)[3])
+                        selected_from_user = message_body.split(None, 3)[1][1:].strip()
+                        selected_to_user = message_body.split(None, 3)[2][1:].strip()
+                    else:
+                        char_id = None
+                        selected_from_user = message_body.split(None, 2)[1][1:].strip()
+                        selected_to_user = message_body.split(None, 2)[2][1:].strip()
+
+                    if selected_from_user == self.get_from_userid(message):
+                        to_char_id = self.character_persistent_class.move_char(selected_from_user, selected_to_user, char_id)
+
+                        if char_id is not None:
+                            body = "Du hast erfolgreich deinen {}. Charakter auf @{} verschoben.".format(char_id, selected_to_user)
+                        else:
+                            body = "Du hast erfolgreich deinen Charakter auf @{} verschoben.".format(selected_to_user)
+
+                        response_messages.append(TextMessage(
+                            to=message.from_user,
+                            chat_id=message.chat_id,
+                            body=body,
+                            keyboards=[SuggestedResponseKeyboard(responses=[
+                                self.generate_text_response("Anzeigen", selected_to_user, to_char_id, message),
+                                TextResponse("Liste")
+                            ])]
+                        ))
+
+                    elif self.is_admin(message):
+                        to_char_id = self.character_persistent_class.move_char(selected_from_user, selected_to_user, char_id)
+
+                        if char_id is not None:
+                            body = "Du hast erfolgreich den {}. Charakter von @{} auf @{} verschoben.".format(char_id, selected_from_user, selected_to_user)
+                        else:
+                            body = "Du hast erfolgreich den ersten Charakter von @{} auf @{} verschoben.".format(selected_from_user, selected_to_user)
+
+                        response_messages.append(TextMessage(
+                            to=message.from_user,
+                            chat_id=message.chat_id,
+                            body=body,
+                            keyboards=[SuggestedResponseKeyboard(responses=[
+                                self.generate_text_response("Anzeigen", selected_to_user, to_char_id, message),
+                                TextResponse("Liste")
+                            ])]
+                        ))
+
+                    else:
+                        response_messages.append(TextMessage(
+                            to=message.from_user,
+                            chat_id=message.chat_id,
+                            body="Du kannst keine Charaktere von anderen Nutzern verschieben.",
+                            keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Liste")])]
+                        ))
+
+                else:
+                    response_messages.append(TextMessage(
+                        to=message.from_user,
+                        chat_id=message.chat_id,
+                        body="Fehler beim Aufruf des Befehls. Siehe Hilfe.",
+                        keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
+                    ))
 
             #
             # Befehl Löschen
@@ -1236,17 +1301,49 @@ class CharacterPersistentClass:
             max_char_id = max(max_char_id, char_data['char_id'])
         return max_char_id
 
+    def get_next_fee_char_id(self, user_id):
+        self.connect_database()
+
+        self.cursor.execute((
+            "SELECT char_id "
+            "FROM characters "
+            "WHERE user_id=? "
+            "ORDER BY char_id "
+            "LIMIT 1 "
+        ), [user_id])
+
+        min_char_id = self.cursor.fetchone()
+        if min_char_id is None or int(min_char_id['char_id']) != self.get_min_char_id():
+            return self.get_min_char_id()
+
+        self.cursor.execute((
+            "SELECT char_id + 1 AS new_char_id "
+            "FROM characters ch "
+            "WHERE NOT EXISTS ( "
+            "    SELECT  NULL "
+            "    FROM    characters mi "
+            "    WHERE   mi.char_id = ch.char_id + 1 AND mi.user_id=ch.user_id"
+            ") AND ch.user_id=?"
+            "ORDER BY char_id "
+            "LIMIT 1 "
+        ), [user_id])
+
+        next_free_char_id = self.cursor.fetchone()
+        if next_free_char_id is None:
+            return self.get_min_char_id()
+        return int(next_free_char_id['new_char_id'])
+
     def add_char(self, user_id, creator_id, text):
         self.connect_database()
 
-        max_char_id = self.get_max_char_id(user_id)
-        data = (user_id, max_char_id+1, text, creator_id, int(time.time()) )
+        next_char_id = self.get_next_fee_char_id(user_id)
+        data = (user_id, next_char_id, text, creator_id, int(time.time()) )
         self.cursor.execute((
             "INSERT INTO characters "
             "(user_id, char_id, text, creator_id, created) "
             "VALUES (?, ?, ?, ?, ?)"
         ), data)
-        return max_char_id+1
+        return next_char_id
 
     def change_char(self, user_id, creator_id, text, char_id=None):
         self.connect_database()
@@ -1308,6 +1405,23 @@ class CharacterPersistentClass:
         ), data)
 
         return True
+
+    def move_char(self, from_user_id, to_user_id, from_char_id=None):
+        self.connect_database()
+
+        if from_char_id is None:
+            from_char_id = self.get_min_char_id()
+
+        to_char_id = self.get_next_fee_char_id(to_user_id)
+
+        data = (to_user_id, to_char_id, from_user_id, from_char_id)
+        self.cursor.execute((
+            "UPDATE characters "
+            "SET user_id=?, char_id=? "
+            "WHERE user_id LIKE ? AND char_id=?"
+        ), data)
+
+        return to_char_id
 
     def remove_char(self, user_id, deletor_id, char_id=None):
         self.connect_database()

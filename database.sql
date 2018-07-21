@@ -127,6 +127,7 @@ Regeln
 Vorlage
 Hinzufügen (<username>) <text>
 Ändern (<username>) (<char_id>) <text>
+Verschieben <username_von> <username_nach> (<char_id>)
 Bild-setzen (<username>) (<char_id>)
 Anzeigen (<username>) (<char_id>|<char_name>)
 Löschen <eigener_username> (<char_id>)
@@ -160,6 +161,7 @@ rules
 template
 add (<username>) <text>
 change (<username>) (<char_id>) <text>
+move <username_from> <username_to> (<char_id>)
 set-pic (<username>) (<char_id>)
 show (<username>) (<char_id>|<char_name>)
 del <eigener_username> (<char_id>)
