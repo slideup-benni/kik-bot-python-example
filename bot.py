@@ -37,9 +37,9 @@ from configparser import SectionProxy
 from mimetypes import guess_extension
 from pathlib import Path
 from flask import Flask, request, Response, send_from_directory
-from kik import KikApi, Configuration, KikError
+from kik import User, KikApi, Configuration, KikError
 from kik.messages import messages_from_json, TextMessage, PictureMessage, \
-    SuggestedResponseKeyboard, TextResponse, StartChattingMessage
+    SuggestedResponseKeyboard, TextResponse, StartChattingMessage, Message, FriendPickerResponse
 
 app = Flask(__name__)
 
@@ -69,7 +69,8 @@ def incoming():
 
     for message in messages:
         try:
-            response_messages += message_controller.process_message(message, kik_api.get_user(message.from_user))
+            user = kik_api.get_user(message.from_user) # type: User
+            response_messages += message_controller.process_message(message, user)
         except:
             error_id = hashlib.md5((str(int(time.time())) + message.from_user).encode('utf-8')).hexdigest()
             print("Error: " + error_id + " --- " + traceback.format_exc())
@@ -139,18 +140,18 @@ class MessageController:
             # Dynamische Befehle
             #
             if message_body == u"\U00002B05\U0000FE0F":
-                status_obj = self.character_persistent_class.get_user_command_status(message.from_user)
+                status_obj = self.character_persistent_class.get_user_command_status(self.get_from_userid(message))
                 if status_obj['status'] == CharacterPersistentClass.STATUS_DYN_MESSAGES:
                     message_body = status_obj['data']['left'].lower()
                     message_body_c = status_obj['data']['left']
 
             elif message_body == u"\U000027A1\U0000FE0F":
-                status_obj = self.character_persistent_class.get_user_command_status(message.from_user)
+                status_obj = self.character_persistent_class.get_user_command_status(self.get_from_userid(message))
                 if status_obj['status'] == CharacterPersistentClass.STATUS_DYN_MESSAGES:
                     message_body = status_obj['data']['right'].lower()
                     message_body_c = status_obj['data']['right']
             elif message_body == u"\U0001F504":
-                status_obj = self.character_persistent_class.get_user_command_status(message.from_user)
+                status_obj = self.character_persistent_class.get_user_command_status(self.get_from_userid(message))
                 if status_obj['status'] == CharacterPersistentClass.STATUS_DYN_MESSAGES:
                     message_body = status_obj['data']['redo'].lower()
                     message_body_c = status_obj['data']['redo']
@@ -165,10 +166,10 @@ class MessageController:
                     selected_user = message_body.split(None,2)[1][1:]
 
                     auth = self.check_auth(self.character_persistent_class, message)
-                    if selected_user != message.from_user and auth is not True:
+                    if selected_user != self.get_from_userid(message) and auth is not True:
                         return [auth]
 
-                    char_id = self.character_persistent_class.add_char(message_body.split(None, 2)[1][1:].strip(), message.from_user, message_body_c.split(None, 2)[2].strip())
+                    char_id = self.character_persistent_class.add_char(message_body.split(None, 2)[1][1:].strip(), self.get_from_userid(message), message_body_c.split(None, 2)[2].strip())
 
                     if char_id == CharacterPersistentClass.get_min_char_id():
                         body = "Alles klar! Der erste Charakter für @{} wurde hinzugefügt.".format(selected_user)
@@ -187,7 +188,7 @@ class MessageController:
                         ])]
                     ))
                 elif len(message_body.split(None,1)) == 2 and message_body.split(None,1)[1][0] != "@":
-                    char_id = self.character_persistent_class.add_char(message.from_user, message.from_user, message_body_c.split(None, 1)[1].strip())
+                    char_id = self.character_persistent_class.add_char(self.get_from_userid(message), self.get_from_userid(message), message_body_c.split(None, 1)[1].strip())
 
                     if char_id == CharacterPersistentClass.get_min_char_id():
                         body = "Alles klar! Dein erster Charakter wurde hinzugefügt."
@@ -199,9 +200,9 @@ class MessageController:
                         chat_id=message.chat_id,
                         body=body,
                         keyboards=[SuggestedResponseKeyboard(responses=[
-                            self.generate_text_response("Anzeigen", message.from_user, char_id, message),
-                            self.generate_text_response("Bild-setzen", message.from_user, char_id, message),
-                            self.generate_text_response("Löschen", message.from_user, char_id, message, force_username=True),
+                            self.generate_text_response("Anzeigen", self.get_from_userid(message), char_id, message),
+                            self.generate_text_response("Bild-setzen", self.get_from_userid(message), char_id, message),
+                            self.generate_text_response("Löschen", self.get_from_userid(message), char_id, message, force_username=True),
                             TextResponse("Liste")
                         ])]
                     ))
@@ -225,10 +226,10 @@ class MessageController:
                     text = message_body_c.split(None, 3)[3].strip()
 
                     auth = self.check_auth(self.character_persistent_class, message)
-                    if user_id != message.from_user and auth is not True:
+                    if user_id != self.get_from_userid(message) and auth is not True:
                         return [auth]
 
-                    self.character_persistent_class.change_char(user_id, message.from_user, text, char_id)
+                    self.character_persistent_class.change_char(user_id, self.get_from_userid(message), text, char_id)
                     response_messages.append(TextMessage(
                         to=message.from_user,
                         chat_id=message.chat_id,
@@ -245,15 +246,15 @@ class MessageController:
                     char_id = int(message_body.split(None, 2)[1])
                     text = message_body_c.split(None, 2)[2].strip()
 
-                    self.character_persistent_class.change_char(message.from_user, message.from_user, text, char_id)
+                    self.character_persistent_class.change_char(self.get_from_userid(message), self.get_from_userid(message), text, char_id)
                     response_messages.append(TextMessage(
                         to=message.from_user,
                         chat_id=message.chat_id,
                         body="Alles klar! Dein {}. Charakter wurde gespeichert.".format(char_id),
                         keyboards=[SuggestedResponseKeyboard(responses=[
-                            self.generate_text_response("Anzeigen", message.from_user, char_id, message),
-                            self.generate_text_response("Bild-setzen", message.from_user, char_id, message),
-                            self.generate_text_response("Letzte-Löschen", message.from_user, char_id, message, force_username=True),
+                            self.generate_text_response("Anzeigen", self.get_from_userid(message), char_id, message),
+                            self.generate_text_response("Bild-setzen", self.get_from_userid(message), char_id, message),
+                            self.generate_text_response("Letzte-Löschen", self.get_from_userid(message), char_id, message, force_username=True),
                             TextResponse("Liste")
                         ])]
                     ))
@@ -261,10 +262,10 @@ class MessageController:
                     user_id = message_body.split(None, 2)[1][1:].strip()
 
                     auth = self.check_auth(self.character_persistent_class, message)
-                    if user_id != message.from_user and auth is not True:
+                    if user_id != self.get_from_userid(message) and auth is not True:
                         return [auth]
 
-                    self.character_persistent_class.change_char(message_body.split(None, 2)[1][1:].strip(), message.from_user, message_body_c.split(None, 2)[2].strip())
+                    self.character_persistent_class.change_char(message_body.split(None, 2)[1][1:].strip(), self.get_from_userid(message), message_body_c.split(None, 2)[2].strip())
                     response_messages.append(TextMessage(
                         to=message.from_user,
                         chat_id=message.chat_id,
@@ -277,15 +278,15 @@ class MessageController:
                         ])]
                     ))
                 elif len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1][0] != "@":
-                    self.character_persistent_class.change_char(message.from_user, message.from_user, message_body_c.split(None, 1)[1].strip())
+                    self.character_persistent_class.change_char(self.get_from_userid(message), self.get_from_userid(message), message_body_c.split(None, 1)[1].strip())
                     response_messages.append(TextMessage(
                         to=message.from_user,
                         chat_id=message.chat_id,
                         body="Alles klar! Dein erster Charakter wurde gespeichert.",
                         keyboards=[SuggestedResponseKeyboard(responses=[
-                            self.generate_text_response("Anzeigen", message.from_user, None, message),
-                            self.generate_text_response("Bild-setzen", message.from_user, None, message),
-                            self.generate_text_response("Letzte-Löschen", message.from_user, None, message, force_username=True),
+                            self.generate_text_response("Anzeigen", self.get_from_userid(message), None, message),
+                            self.generate_text_response("Bild-setzen", self.get_from_userid(message), None, message),
+                            self.generate_text_response("Letzte-Löschen", self.get_from_userid(message), None, message, force_username=True),
                             TextResponse("Liste")
                         ])]
                     ))
@@ -311,12 +312,12 @@ class MessageController:
                     char_id = int(message_body.split(None, 2)[2])
 
                     auth = self.check_auth(self.character_persistent_class, message)
-                    if user_id != message.from_user and auth is not True:
+                    if user_id != self.get_from_userid(message) and auth is not True:
                         return [auth]
 
                 elif len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1].isdigit():
 
-                    user_id = message.from_user
+                    user_id = self.get_from_userid(message)
                     char_id = int(message_body.split(None, 1)[1])
 
                 elif len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1][0] == "@":
@@ -324,11 +325,11 @@ class MessageController:
                     char_id = None
 
                     auth = self.check_auth(self.character_persistent_class, message)
-                    if user_id != message.from_user and auth is not True:
+                    if user_id != self.get_from_userid(message) and auth is not True:
                         return [auth]
 
                 else:
-                    user_id = message.from_user
+                    user_id = self.get_from_userid(message)
                     char_id = None
 
                 user_command_status = CharacterPersistentClass.STATUS_SET_PICTURE
@@ -364,22 +365,22 @@ class MessageController:
                     else:
                         char_id = None
                 elif len(message_body.split(None,1)) == 2 and message_body.split(None,1)[1].isdigit():
-                    selected_user = message.from_user
+                    selected_user = self.get_from_userid(message)
                     char_id = int(message_body.split(None,1)[1])
                 elif len(message_body.split(None,1)) == 2 and message_body.split(None,1)[1][0] == "@":
                     selected_user = message_body.split(None,1)[1][1:].strip()
                     char_id = None
                 elif len(message_body.split(None,1)) == 2 and message_body.split(None,1)[1].strip() != "":
                     char_name = message_body.split(None, 1)[1].strip()
-                    chars = self.character_persistent_class.find_char(char_name, message.from_user)
-                    selected_user = message.from_user
+                    chars = self.character_persistent_class.find_char(char_name, self.get_from_userid(message))
+                    selected_user = self.get_from_userid(message)
                     if len(chars) == 1:
                         char_id = chars[0]['char_id']
                         char_data = chars[0]
                     else:
                         char_id = None
                 else:
-                    selected_user = message.from_user
+                    selected_user = self.get_from_userid(message)
                     char_id = None
 
                 if chars is None and char_data is None and selected_user is not None:
@@ -438,8 +439,8 @@ class MessageController:
                         char_id = None
                         selected_user = message_body.split(None, 1)[1][1:].strip()
 
-                    if selected_user == message.from_user:
-                        self.character_persistent_class.remove_char(selected_user, message.from_user, char_id)
+                    if selected_user == self.get_from_userid(message):
+                        self.character_persistent_class.remove_char(selected_user, self.get_from_userid(message), char_id)
 
                         if char_id is not None:
                             body = "Du hast erfolgreich deinen {}. Charakter gelöscht".format(char_id)
@@ -453,8 +454,8 @@ class MessageController:
                             keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Liste")])]
                         ))
 
-                    elif message.from_user.lower() in [x.strip().lower() for x in default_config.get("Admins", "admin1").split(',')]:
-                        self.character_persistent_class.remove_char(selected_user, message.from_user, char_id)
+                    elif self.is_admin(message):
+                        self.character_persistent_class.remove_char(selected_user,self.get_from_userid(message), char_id)
 
                         if char_id is not None:
                             body = "Du hast erfolgreich den {}. Charakter von @{} gelöscht.".format(char_id, selected_user)
@@ -496,9 +497,8 @@ class MessageController:
                         char_id = None
                         selected_user = message_body.split(None, 1)[1][1:].strip()
 
-
-                    if selected_user == message.from_user:
-                        self.character_persistent_class.remove_last_char_change(selected_user, message.from_user)
+                    if selected_user == self.get_from_userid(message):
+                        self.character_persistent_class.remove_last_char_change(selected_user, self.get_from_userid(message))
 
                         if char_id is not None:
                             body = "Du hast erfolgreich die letzte Änderung am Charakter {} gelöscht.".format(char_id)
@@ -515,8 +515,8 @@ class MessageController:
                             ])]
                         ))
 
-                    elif message.from_user.lower() in [x.strip().lower() for x in default_config.get("Admins", "admin1").split(',')]:
-                        self.character_persistent_class.remove_last_char_change(selected_user, message.from_user)
+                    elif self.is_admin(message):
+                        self.character_persistent_class.remove_last_char_change(selected_user, self.get_from_userid(message))
 
                         if char_id is not None:
                             body = "Du hast erfolgreich die letzte Änderung des Charakters {} von @{} gelöscht.".format(char_id, selected_user)
@@ -603,7 +603,7 @@ class MessageController:
             # Befehl Setze Befehl Tastaturen
             #
             elif message_command in ["setze-befehl-tastaturen", "set-command-keyboards", "set-cmd-keyboards"]:
-                if message.from_user.lower() in [x.strip().lower() for x in default_config.get("Admins", "admin1").split(',')]:
+                if self.is_admin(message):
                     if len(message_body.split(None, 2)) == 3:
                         keyboards = message_body_c.split(None, 2)[2].strip()
                         static_command = message_body.split(None, 2)[1].strip()
@@ -651,7 +651,7 @@ class MessageController:
             # Befehl Setze Befehl Alternative Befehle
             #
             elif message_command in ["setze-befehl-alternative-befehle", "set-command-alternative-commands", "set-cmd-alt-cmd"]:
-                if message.from_user.lower() in [x.strip().lower() for x in default_config.get("Admins", "admin1").split(',')]:
+                if self.is_admin(message):
                     if len(message_body.split(None, 2)) == 3:
                         alt_commands = message_body_c.split(None, 2)[2].strip()
                         static_command = message_body.split(None, 2)[1].strip()
@@ -699,7 +699,7 @@ class MessageController:
             # Befehl Setze Antwort
             #
             elif message_command in ["setze-befehl", "set-command", "set-cmd"]:
-                if message.from_user.lower() in [x.strip().lower() for x in default_config.get("Admins", "admin1").split(',')]:
+                if self.is_admin(message):
                     if len(message_body.split(None, 2)) == 3:
                         text = message_body_c.split(None, 2)[2].strip()
                         static_command = message_body.split(None, 2)[1].strip()
@@ -748,7 +748,7 @@ class MessageController:
             elif message_command in ["auth", "berechtigen", "authorize", "authorise"]:
                 if len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1][0] == "@":
                     selected_user = message_body.split(None, 1)[1][1:].strip()
-                    result = self.character_persistent_class.auth_user(selected_user, message.from_user)
+                    result = self.character_persistent_class.auth_user(selected_user, message)
 
                     if result is True:
                         response_messages.append(TextMessage(
@@ -781,7 +781,7 @@ class MessageController:
             elif message_command in ["unauth", "entmachten", "unauthorize", "unauthorise"]:
                 if len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1][0] == "@":
                     selected_user = message_body.split(None, 1)[1][1:].strip()
-                    result = self.character_persistent_class.unauth_user(selected_user, message.from_user)
+                    result = self.character_persistent_class.unauth_user(selected_user, self.get_from_userid(message))
 
                     if result is True:
                         response_messages.append(TextMessage(
@@ -842,7 +842,7 @@ class MessageController:
                     to=message.from_user,
                     chat_id=message.chat_id,
                     body=body,
-                    keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Anzeigen @{}".format(x)) for x in user_ids])]
+                    keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Anzeigen @{}".format(x)) for x in user_ids][:15])]
                 ))
 
 
@@ -883,7 +883,7 @@ class MessageController:
                         "Weitere Beispiele\n"
                         "Alle Beispiele sind in einzelnen Abschnitten mittels ----- getrennt.\n\n"
                         "------\n"
-                        "@{} Hinzufügen @{}\n".format(bot_username, message.from_user) +
+                        "@{} Hinzufügen @{}\n".format(bot_username, self.get_from_userid(message)) +
                         "Hier kann der Text zum Charakter stehen\n"
                         "Zeilenumbrüche sind erlaubt\n"
                         "In diesem Beispiel wurde der Nickname angegeben\n"
@@ -897,7 +897,7 @@ class MessageController:
                         "------\n"
                         "@{} Anzeigen\n".format(bot_username) +
                         "------\n"
-                        "@{} Löschen @{}\n".format(bot_username, message.from_user) +
+                        "@{} Löschen @{}\n".format(bot_username, self.get_from_userid(message)) +
                         "------\n"
                         "@{} Liste\n".format(bot_username) +
                         "------\n"
@@ -914,7 +914,7 @@ class MessageController:
                     keyboards=[SuggestedResponseKeyboard(responses=[
                         TextResponse("Hilfe"),
                         TextResponse((
-                            "@{} Hinzufügen @{} ".format(bot_username, message.from_user) +
+                            "@{} Hinzufügen @{} ".format(bot_username, self.get_from_userid(message)) +
                             "Zeilenumbrüche sind nicht Pflicht."
                         )),
                         TextResponse("Anzeigen @ismil1110".format(bot_username)),
@@ -991,7 +991,7 @@ class MessageController:
                     keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
                 ))
         elif isinstance(message, PictureMessage):
-            status_obj = self.character_persistent_class.get_user_command_status(message.from_user)
+            status_obj = self.character_persistent_class.get_user_command_status(self.get_from_userid(message))
             if status_obj is None or status_obj['status'] != CharacterPersistentClass.STATUS_SET_PICTURE:
                 response_messages.append(TextMessage(
                     to=message.from_user,
@@ -1001,7 +1001,7 @@ class MessageController:
                 ))
 
             else:
-                success = self.character_persistent_class.set_char_pic(status_obj['data']['user_id'], message.from_user, message.pic_url, status_obj['data']['char_id'])
+                success = self.character_persistent_class.set_char_pic(status_obj['data']['user_id'], self.get_from_userid(message), message.pic_url, status_obj['data']['char_id'])
                 if success is True:
                     body = "Alles klar! Das Bild wurde gesetzt."
                     show_resp = self.generate_text_response("Anzeigen", status_obj['data']['user_id'], status_obj['data']['char_id'], message)
@@ -1034,7 +1034,7 @@ class MessageController:
         # We're sending a batch of messages. We can send up to 25 messages at a time (with a limit of
         # 5 messages per user).
 
-        self.character_persistent_class.update_user_command_status(message.from_user, user_command_status, user_command_status_data)
+        self.character_persistent_class.update_user_command_status(self.get_from_userid(message), user_command_status, user_command_status_data)
         self.character_persistent_class.commit()
         return response_messages
 
@@ -1045,7 +1045,7 @@ class MessageController:
 
     @staticmethod
     def generate_text(command, user_id, char_id, message, force_username=False):
-        show_user = message.from_user != user_id or force_username is True
+        show_user = MessageController.get_from_userid(message) != user_id or force_username is True
         show_char_id = char_id is not None and char_id > CharacterPersistentClass.get_min_char_id()
 
         if show_user and show_char_id:
@@ -1057,14 +1057,16 @@ class MessageController:
         return command
 
     @staticmethod
-    def check_auth(persistent_class, message):
-        if persistent_class.is_auth_user(message.from_user) is False:
+    def check_auth(persistent_class, message, auth_command=False):
+        if auth_command is False and message.chat_id == "e5e88309bc7cc4e7b7572cb168b30f22f74e5599448f3d016de89bfd9e8818d0":
+            return True
+
+        if persistent_class.is_auth_user(MessageController.get_from_userid(message)) is False:
             return TextMessage(
                 to=message.from_user,
                 chat_id=message.chat_id,
                 body="Du bist nicht berechtigt diesen Befehl auszuführen!\n"+
-                     "Bitte melde dich in der Gruppe #germanrpu und erfrage eine Berechtigung.\n\n" +
-                     "Achtung: Aufgrund eines Bugs von Seiten Kik",
+                     "Bitte melde dich in der Gruppe #germanrpu und erfrage eine Berechtigung.",
                 keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
             )
         return True
@@ -1095,7 +1097,7 @@ class MessageController:
                 user_command_status = CharacterPersistentClass.STATUS_DYN_MESSAGES
                 user_command_status_data = dyn_message_data
 
-        if selected_user == message.from_user:
+        if selected_user == MessageController.get_from_userid(message):
             keyboard_responses.append(MessageController.generate_text_response("Bild-setzen", selected_user, char_id, message))
 
         keyboard_responses.append(TextResponse("Liste"))
@@ -1152,6 +1154,20 @@ class MessageController:
             return user.first_name + " " + user.last_name
         else:
             return "@" + user_id
+
+    @staticmethod
+    def is_aliased(message):
+        return len(message.from_user) == 52
+
+    @staticmethod
+    def get_from_userid(message):
+        return message.from_user
+
+    @staticmethod
+    def is_admin(message: Message):
+        if message.type == "public":
+            return False
+        return message.from_user.lower() in [x.strip().lower() for x in default_config.get("Admins", "admin1").split(',')]
 
 
 class KikApiCache:
@@ -1395,14 +1411,14 @@ class CharacterPersistentClass:
         ))
         return self.cursor.fetchall()
 
-    def auth_user(self, user_id, creator_id):
+    def auth_user(self, user_id, creator_id, message):
         if self.is_auth_user(user_id) or \
-                creator_id.lower() not in [x.strip().lower() for x in default_config.get("Admins", "admin1").split(',')] and (self.is_unauth_user(user_id) or self.is_auth_user(creator_id) is False):
+                MessageController.is_admin(message) is False and (self.is_unauth_user(user_id) or self.is_auth_user(creator_id) is False):
             return False
 
         self.connect_database()
 
-        data = (user_id, creator_id, int(time.time()))
+        data = (user_id, MessageController.get_from_userid(message), int(time.time()))
         self.cursor.execute((
             "INSERT INTO users "
             "(user_id, creator_id, created) "
@@ -1410,13 +1426,13 @@ class CharacterPersistentClass:
         ), data)
         return True
 
-    def unauth_user(self, user_id, deletor_id):
-        if deletor_id.lower() not in [x.strip().lower() for x in default_config.get("Admins", "admin1").split(',')]:
+    def unauth_user(self, user_id, message):
+        if MessageController.is_admin(message) is False:
             return False
 
         self.connect_database()
 
-        data = (deletor_id, int(time.time()), user_id)
+        data = (MessageController.get_from_userid(message), int(time.time()), user_id)
         self.cursor.execute((
             "UPDATE users "
             "SET deletor_id=?, deleted=? "
@@ -1424,8 +1440,8 @@ class CharacterPersistentClass:
         ), data)
         return True
 
-    def is_auth_user(self, user_id):
-        if user_id.lower() in [x.strip().lower() for x in default_config.get("Admins", "admin1").split(',')]:
+    def is_auth_user(self, message):
+        if MessageController.is_admin(message):
             return True
 
         self.connect_database()
@@ -1434,7 +1450,7 @@ class CharacterPersistentClass:
             "FROM  users "
             "WHERE user_id LIKE ? AND deleted IS NULL "
             "LIMIT 1"
-        ), [user_id])
+        ), [MessageController.get_from_userid(message)])
         return self.cursor.fetchone() is not None
 
     def is_unauth_user(self, user_id):
