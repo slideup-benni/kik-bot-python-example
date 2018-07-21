@@ -155,6 +155,11 @@ class MessageController:
                 if status_obj['status'] == CharacterPersistentClass.STATUS_DYN_MESSAGES:
                     message_body = status_obj['data']['redo'].lower()
                     message_body_c = status_obj['data']['redo']
+            elif message_body.strip()[0] == "@":
+                status_obj = self.character_persistent_class.get_user_command_status(self.get_from_userid(message))
+                if status_obj['status'] == CharacterPersistentClass.STATUS_DYN_MESSAGES:
+                    message_body = status_obj['data']['add_user_id'].lower().format(message_body.strip()[1:])
+                    message_body_c = status_obj['data']['add_user_id'].format(message_body_c.strip()[1:])
 
             message_command = message_body.split(None,1)[0]
 
@@ -189,11 +194,22 @@ class MessageController:
                     ))
                 elif len(message_body.split(None,1)) == 2 and message_body.split(None,1)[1][0] != "@":
                     char_id = self.character_persistent_class.add_char(self.get_from_userid(message), self.get_from_userid(message), message_body_c.split(None, 1)[1].strip())
+                    body2 = None
 
-                    if char_id == CharacterPersistentClass.get_min_char_id():
+                    if self.is_aliased(message) is False and char_id == CharacterPersistentClass.get_min_char_id():
                         body = "Alles klar! Dein erster Charakter wurde hinzugefügt."
-                    else:
+                    elif self.is_aliased(message) is False:
                         body = "Alles klar! Dein {}. Charakter wurde hinzugefügt.".format(char_id)
+                    else:
+                        body = "Alles klar! Dein Charakter wurde hinzugefügt. \n" + \
+                            "Der Charakter wurde temporär dem Alias-User @{} zugeordnet.\n\n".format(self.get_from_userid(message)) + \
+                            "Aufgrund der letzten Änderung von Kik, konnte ich dir den Charakter nicht direkt zuordnen.\n" + \
+                            "Damit der Charakter auch wirklich dir zugeordnet wird, sende bitte jetzt den folgenden Befehl (Bitte kopieren und deine Nutzer_Id ersetzen):"
+                        body2 = "@{} @Deine_Nutzer_Id".format(bot_username)
+                        user_command_status = CharacterPersistentClass.STATUS_DYN_MESSAGES
+                        user_command_status_data = {
+                            'add_user_id': "Verschieben @{} @{} {}".format(self.get_from_userid(message), "{}", char_id)
+                        }
 
                     response_messages.append(TextMessage(
                         to=message.from_user,
@@ -206,6 +222,13 @@ class MessageController:
                             TextResponse("Liste")
                         ])]
                     ))
+
+                    if body2 is not None:
+                        response_messages.append(TextMessage(
+                            to=message.from_user,
+                            chat_id=message.chat_id,
+                            body=body2
+                        ))
                 else:
                     response_messages.append(TextMessage(
                         to=message.from_user,
@@ -453,7 +476,9 @@ class MessageController:
                             chat_id=message.chat_id,
                             body=body,
                             keyboards=[SuggestedResponseKeyboard(responses=[
-                                self.generate_text_response("Anzeigen", selected_to_user, to_char_id, message),
+                                self.generate_text_response("Anzeigen", selected_to_user, char_id, message),
+                                self.generate_text_response("Bild-setzen", selected_to_user, char_id, message),
+                                self.generate_text_response("Löschen", selected_to_user, char_id, message, force_username=True),
                                 TextResponse("Liste")
                             ])]
                         ))
@@ -1126,7 +1151,7 @@ class MessageController:
         if auth_command is False and message.chat_id == "e5e88309bc7cc4e7b7572cb168b30f22f74e5599448f3d016de89bfd9e8818d0":
             return True
 
-        if persistent_class.is_auth_user(MessageController.get_from_userid(message)) is False:
+        if persistent_class.is_auth_user(message) is False:
             return TextMessage(
                 to=message.from_user,
                 chat_id=message.chat_id,
@@ -1526,8 +1551,8 @@ class CharacterPersistentClass:
         return self.cursor.fetchall()
 
     def auth_user(self, user_id, creator_id, message):
-        if self.is_auth_user(user_id) or \
-                MessageController.is_admin(message) is False and (self.is_unauth_user(user_id) or self.is_auth_user(creator_id) is False):
+        if self.is_auth_user(message) or \
+                MessageController.is_admin(message) is False and (self.is_unauth_user(user_id) or self.is_auth_user(message) is False):
             return False
 
         self.connect_database()
