@@ -445,8 +445,8 @@ class MessageController:
                         keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Liste")])]
                     ))
                 else:
-                    (char_resp_msg, user_command_status, user_command_status_data) = self.create_char_messages(self.character_persistent_class, selected_user,
-                                                                   char_id, char_data, message, user_command_status, user_command_status_data)
+                    (char_resp_msg, user_command_status, user_command_status_data) = self.create_char_messages(self.character_persistent_class,
+                                                                   char_data, message, user_command_status, user_command_status_data)
                     response_messages += char_resp_msg
 
             #
@@ -661,8 +661,8 @@ class MessageController:
                         ))
 
                     elif len(chars) == 1:
-                        (char_resp_msg, user_command_status, user_command_status_data) = self.create_char_messages(self.character_persistent_class, chars[0]['user_id'],
-                                                                       chars[0]['char_id'], chars[0], message, user_command_status, user_command_status_data)
+                        (char_resp_msg, user_command_status, user_command_status_data) = self.create_char_messages(self.character_persistent_class,
+                                                                       chars[0], message, user_command_status, user_command_status_data)
                         response_messages += char_resp_msg
 
                     else:
@@ -901,16 +901,22 @@ class MessageController:
             # Befehl Liste
             #
             elif message_command in ["liste", "list"]:
+                if len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1].isdigit():
+                    page = int(message_body.split(None, 1)[1])
+                else:
+                    page = 1
+
                 auth = self.check_auth(self.character_persistent_class, message)
                 if auth is not True:
                     return [auth]
 
-                chars = self.character_persistent_class.get_all_users_with_chars()
-                user_ids = [item['user_id'] for item in chars]
+                limit = 15
+                chars = self.character_persistent_class.list_all_users_with_chars(page)
+                user_ids = [item['user_id'] for item in chars[:limit]]
 
-                body = ""
-                number = 1
-                for char in chars:
+                body = "Liste aller Nutzer mit Charakteren:\n--- Seite {} ---\n".format(page)
+                number = (page-1)*limit+1
+                for char in chars[:limit]:
                     b = "{}.: {}\n".format(number, self.get_name(char['user_id'])) + \
                         "Nutzername: @{}\n".format(char['user_id']) + \
                         "Anz. Charaktere: {}\n".format(char['chars_cnt']) + \
@@ -928,11 +934,30 @@ class MessageController:
                         ))
                         body = b
 
+                responses = list()
+                dyn_message_data = {}
+                if page != 1:
+                    dyn_message_data['left'] = "Liste {}".format(page-1)
+                    responses.append(TextResponse(u"\U00002B05\U0000FE0F"))
+                if len(chars) > limit:
+                    dyn_message_data['right'] = "Liste {}".format(page+1)
+                    responses.append(TextResponse(u"\U000027A1\U0000FE0F"))
+
+                if dyn_message_data != {}:
+                    user_command_status = CharacterPersistentClass.STATUS_DYN_MESSAGES
+                    user_command_status_data = dyn_message_data
+                    body += "\n\n(Weitere Seiten: {} und {} zum navigieren)".format(
+                        u"\U00002B05\U0000FE0F",
+                        u"\U000027A1\U0000FE0F"
+                    )
+
+                responses += [TextResponse("Anzeigen @{}".format(x)) for x in user_ids]
+
                 response_messages.append(TextMessage(
                     to=message.from_user,
                     chat_id=message.chat_id,
                     body=body,
-                    keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Anzeigen @{}".format(x)) for x in user_ids][:15])]
+                    keyboards=[SuggestedResponseKeyboard(responses=responses)]
                 ))
 
 
@@ -1148,7 +1173,8 @@ class MessageController:
 
     @staticmethod
     def check_auth(persistent_class, message, auth_command=False):
-        if auth_command is False and message.chat_id == "e5e88309bc7cc4e7b7572cb168b30f22f74e5599448f3d016de89bfd9e8818d0":
+        print(message.__dict__)
+        if auth_command is False and message.chat_id == "c0701398a0cc1033d533aefb3dbbf61014dae7157d96648b73889a6f240d1cec":
             return True
 
         if persistent_class.is_auth_user(message) is False:
@@ -1162,37 +1188,34 @@ class MessageController:
         return True
 
     @staticmethod
-    def create_char_messages(character_persistent_class, selected_user, char_id, char_data, message, user_command_status, user_command_status_data):
+    def create_char_messages(character_persistent_class, char_data: sqlite3.Row, message, user_command_status, user_command_status_data):
         response_messages = []
         keyboard_responses = []
-
-        max_char_id = character_persistent_class.get_max_char_id(selected_user)
         body_char_appendix = ""
-        if char_id is None:
-            char_id = CharacterPersistentClass.get_min_char_id()
+        dyn_message_data = {}
 
-        if max_char_id > CharacterPersistentClass.get_min_char_id():
+        if "prev_char_id" in char_data.keys() and char_data["prev_char_id"] is not None:
+            dyn_message_data['left'] = MessageController.generate_text("Anzeigen", char_data["user_id"], char_data["prev_char_id"], message)
+            keyboard_responses.append(TextResponse(u"\U00002B05\U0000FE0F"))
+
+        if "next_char_id" in char_data.keys() and char_data["next_char_id"] is not None:
+            dyn_message_data['right'] = MessageController.generate_text("Anzeigen", char_data["user_id"], char_data["next_char_id"], message)
+            keyboard_responses.append(TextResponse(u"\U000027A1\U0000FE0F"))
+
+        if dyn_message_data != {}:
             body_char_appendix = "\n\n(Weitere Charaktere des Nutzers vorhanden: {} und {} zum navigieren)".format(
                 u"\U00002B05\U0000FE0F",
                 u"\U000027A1\U0000FE0F"
             )
-            dyn_message_data = {}
-            if char_id > CharacterPersistentClass.get_min_char_id():
-                dyn_message_data['left'] = MessageController.generate_text("Anzeigen", selected_user, char_id - 1, message)
-                keyboard_responses.append(TextResponse(u"\U00002B05\U0000FE0F"))
-            if char_id < max_char_id:
-                dyn_message_data['right'] = MessageController.generate_text("Anzeigen", selected_user, char_id + 1, message)
-                keyboard_responses.append(TextResponse(u"\U000027A1\U0000FE0F"))
-            if dyn_message_data != {}:
-                user_command_status = CharacterPersistentClass.STATUS_DYN_MESSAGES
-                user_command_status_data = dyn_message_data
+            user_command_status = CharacterPersistentClass.STATUS_DYN_MESSAGES
+            user_command_status_data = dyn_message_data
 
-        if selected_user == MessageController.get_from_userid(message):
-            keyboard_responses.append(MessageController.generate_text_response("Bild-setzen", selected_user, char_id, message))
+        if char_data["user_id"] == MessageController.get_from_userid(message):
+            keyboard_responses.append(MessageController.generate_text_response("Bild-setzen", char_data["user_id"], char_data["char_id"], message))
 
         keyboard_responses.append(TextResponse("Liste"))
 
-        pic_url = character_persistent_class.get_char_pic_url(selected_user, char_id)
+        pic_url = character_persistent_class.get_char_pic_url(char_data["user_id"], char_data["char_id"])
 
         if pic_url is not None:
             response_messages.append(PictureMessage(
@@ -1203,7 +1226,7 @@ class MessageController:
 
         body = "{}\n\n---\nCharakter von {}\nErstellt von {}\nErstellt am {}{}".format(
             char_data['text'],
-            MessageController.get_name(selected_user, append_user_id=True),
+            MessageController.get_name(char_data["user_id"], append_user_id=True),
             MessageController.get_name(char_data['creator_id'], append_user_id=True),
             datetime.datetime.fromtimestamp(char_data['created']).strftime('%Y-%m-%d %H:%M:%S'),
             body_char_appendix
@@ -1318,13 +1341,6 @@ class CharacterPersistentClass:
     @staticmethod
     def get_min_char_id():
         return 1
-
-    def get_max_char_id(self, user_id):
-        chars = self.get_all_user_chars(user_id)
-        max_char_id = self.get_min_char_id()-1
-        for char_data in chars:
-            max_char_id = max(max_char_id, char_data['char_id'])
-        return max_char_id
 
     def get_next_fee_char_id(self, user_id):
         self.connect_database()
@@ -1486,15 +1502,35 @@ class CharacterPersistentClass:
             ")"
         ), data)
 
+    def get_first_char_id(self, user_id):
+        self.connect_database()
+
+        self.cursor.execute((
+            "SELECT MIN(char_id) AS min_char_id " 
+            "  FROM  characters " 
+            "  WHERE user_id = ? AND deleted IS NULL "
+        ), [user_id])
+
+        row = self.cursor.fetchone()
+        if row is None or row["min_char_id"] is None:
+            return None
+        return int(row["min_char_id"])
+
     def get_char(self, user_id, char_id=None):
         self.connect_database()
 
         if char_id is None:
-            char_id = self.get_min_char_id()
+            char_id = self.get_first_char_id(user_id)
 
         self.cursor.execute((
-            "SELECT id, char_id, text, creator_id, created "
-            "FROM  characters "
+            "SELECT id, user_id, char_id, text, creator_id, created, "
+            "    (SELECT MIN(char_id) "
+            "        FROM  characters AS c1 "
+            "        WHERE c1.user_id = c.user_id AND c1.deleted IS NULL AND c1.char_id > c.char_id) AS next_char_id, "
+            "    (SELECT MAX(char_id) "
+            "        FROM  characters AS c2 "
+            "        WHERE c2.user_id = c.user_id AND c2.deleted IS NULL AND c2.char_id < c.char_id) AS prev_char_id "
+            "FROM  characters AS c "
             "WHERE user_id LIKE ? AND char_id=? AND deleted IS NULL "
             "ORDER BY created DESC "
             "LIMIT 1"
@@ -1506,7 +1542,7 @@ class CharacterPersistentClass:
         self.connect_database()
 
         if char_id is None:
-            char_id = self.get_min_char_id()
+            char_id = self.get_first_char_id(user_id)
 
         self.cursor.execute((
             "SELECT picture_filename "
@@ -1538,7 +1574,7 @@ class CharacterPersistentClass:
         chars = self.cursor.fetchall()
         return chars
 
-    def get_all_users_with_chars(self):
+    def list_all_users_with_chars(self, page=1, limit=15):
         self.connect_database()
 
         self.cursor.execute((
@@ -1546,11 +1582,12 @@ class CharacterPersistentClass:
             "FROM characters "
             "WHERE deleted IS NULL "
             "GROUP BY user_id "
-            "ORDER BY created DESC"
-        ))
+            "ORDER BY created DESC "
+            "LIMIT ?,? "
+        ), [(page-1)*limit, limit+1])
         return self.cursor.fetchall()
 
-    def auth_user(self, user_id, creator_id, message):
+    def auth_user(self, user_id, message):
         if self.is_auth_user(message) or \
                 MessageController.is_admin(message) is False and (self.is_unauth_user(user_id) or self.is_auth_user(message) is False):
             return False
