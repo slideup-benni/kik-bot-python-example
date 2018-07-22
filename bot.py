@@ -466,10 +466,10 @@ class MessageController:
                     if selected_from_user == self.get_from_userid(message):
                         to_char_id = self.character_persistent_class.move_char(selected_from_user, selected_to_user, char_id)
 
-                        if char_id is not None:
-                            body = "Du hast erfolgreich deinen {}. Charakter auf @{} verschoben.".format(char_id, selected_to_user)
+                        if char_id is not None and char_id != CharacterPersistentClass.get_min_char_id():
+                            body = "Du hast erfolgreich deinen {}. Charakter auf @{} ({}.) verschoben.".format(char_id, selected_to_user, to_char_id)
                         else:
-                            body = "Du hast erfolgreich deinen Charakter auf @{} verschoben.".format(selected_to_user)
+                            body = "Du hast erfolgreich deinen Charakter auf @{} ({}.) verschoben.".format(selected_to_user, to_char_id)
 
                         response_messages.append(TextMessage(
                             to=message.from_user,
@@ -486,10 +486,10 @@ class MessageController:
                     elif self.is_admin(message):
                         to_char_id = self.character_persistent_class.move_char(selected_from_user, selected_to_user, char_id)
 
-                        if char_id is not None:
-                            body = "Du hast erfolgreich den {}. Charakter von @{} auf @{} verschoben.".format(char_id, selected_from_user, selected_to_user)
+                        if char_id is not None and char_id != CharacterPersistentClass.get_min_char_id():
+                            body = "Du hast erfolgreich den {}. Charakter von @{} auf @{} ({}.) verschoben.".format(char_id, selected_from_user, selected_to_user, to_char_id)
                         else:
-                            body = "Du hast erfolgreich den ersten Charakter von @{} auf @{} verschoben.".format(selected_from_user, selected_to_user)
+                            body = "Du hast erfolgreich den ersten Charakter von @{} auf @{} ({}.) verschoben.".format(selected_from_user, selected_to_user, to_char_id)
 
                         response_messages.append(TextMessage(
                             to=message.from_user,
