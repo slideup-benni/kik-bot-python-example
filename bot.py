@@ -103,7 +103,12 @@ class MessageController:
         config.read(configFile)
         default_config = config['DEFAULT']  # type: SectionProxy
 
-    def process_message(self, message, user):
+    def process_message(self, message: Message, user):
+
+        log_requests = default_config.get("LogRequests", "False")
+        if log_requests is True or str(log_requests).lower() == "true":
+            print(message.__dict__)
+
         response_messages = []
         user_command_status = CharacterPersistentClass.STATUS_NONE
         user_command_status_data = None
@@ -127,7 +132,7 @@ class MessageController:
                 return [TextMessage(
                     to=message.from_user,
                     chat_id=message.chat_id,
-                    body="Hi {}, ich bin der Steckbrief-Bot der Gruppe #germanrpu\n".format(user.first_name) +
+                    body="Hi {}, ich bin der Steckbrief-Bot der Gruppe #{}\n".format(user.first_name, default_config.get("KikGroup", "somegroup")) +
                          "Für weitere Informationen tippe auf Antwort und dann auf Hilfe.",
                     keyboards=[SuggestedResponseKeyboard(responses=[
                         TextResponse("Hilfe"),
@@ -971,7 +976,7 @@ class MessageController:
                     body=(
                         "Die folgende Charaktervorlage kann genutzt werden um einen neuen Charakter im RPG zu erstellen.\n"
                         "Dies ist eine notwendige Voraussetung um am RPG teilnehmen zu können.\n"
-                        "Bitte poste diese Vorlage ausgefüllt im Gruppenchannel #germanrpu\n"
+                        "Bitte poste diese Vorlage ausgefüllt im Gruppenchannel #{}\n".format(default_config.get("KikGroup", "somegroup")) +
                         "Wichtig: Bitte lasse die Schlüsselwörter (Vorname:, Nachname:, etc.) stehen.\n"
                         "Möchtest du die Vorlage nicht über den Bot speichern, dann entferne bitte die erste Zeile.\n"
                         "Hast du bereits einen Charakter und möchtest diesen aktualisieren, dann schreibe in der ersten Zeile 'ändern' anstatt 'hinzufügen'"
@@ -1084,11 +1089,27 @@ class MessageController:
                     else:
                         keyboards = json.loads(static_message["response_keyboards"])
 
+                    keyboard_responses = list(map(TextResponse, keyboards))
+
+                    body_split = static_message["response"].split("\n")
+                    new_body = ""
+                    for b in body_split:
+                        if len(new_body) + len(b) + 2 < 1500:
+                            new_body += "\n" + b
+                        else:
+                            response_messages.append(TextMessage(
+                                to=message.from_user,
+                                chat_id=message.chat_id,
+                                body=new_body,
+                                keyboards=[SuggestedResponseKeyboard(responses=keyboard_responses)]
+                            ))
+                            new_body = b
+
                     response_messages.append(TextMessage(
                         to=message.from_user,
                         chat_id=message.chat_id,
-                        body=static_message["response"],
-                        keyboards=[SuggestedResponseKeyboard(responses=list(map(TextResponse, keyboards)))]
+                        body=new_body,
+                        keyboards=[SuggestedResponseKeyboard(responses=keyboard_responses)]
                     ))
 
                 else:
@@ -1173,16 +1194,15 @@ class MessageController:
 
     @staticmethod
     def check_auth(persistent_class, message, auth_command=False):
-        print(message.__dict__)
-        if auth_command is False and message.chat_id == "c0701398a0cc1033d533aefb3dbbf61014dae7157d96648b73889a6f240d1cec":
+        if auth_command is False and message.chat_id == default_config.get("KikGroupChatId", ""):
             return True
 
         if persistent_class.is_auth_user(message) is False:
             return TextMessage(
                 to=message.from_user,
                 chat_id=message.chat_id,
-                body="Du bist nicht berechtigt diesen Befehl auszuführen!\n"+
-                     "Bitte melde dich in der Gruppe #germanrpu und erfrage eine Berechtigung.",
+                body="Du bist nicht berechtigt diesen Befehl auszuführen!\n" +
+                     "Bitte melde dich in der Gruppe #{} und erfrage eine Berechtigung.".format(default_config.get("KikGroup", "somegroup")),
                 keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
             )
         return True
