@@ -73,7 +73,7 @@ def incoming():
             response_messages += message_controller.process_message(message, user)
         except:
             error_id = hashlib.md5((str(int(time.time())) + message.from_user).encode('utf-8')).hexdigest()
-            print("Error: " + error_id + " --- " + traceback.format_exc())
+            print("Message-Error: {} ({})\n---\nTrace: {}\n---\nReq: {}".format(error_id, bot_username, traceback.format_exc(), json.dumps(message.__dict__)))
 
             response_messages += [TextMessage(
                 to=message.from_user,
