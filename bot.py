@@ -84,7 +84,24 @@ def incoming():
                 keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
             )]
 
-        kik_api.send_messages(response_messages)
+        try:
+            kik_api.send_messages(response_messages)
+        except:
+            error_id = hashlib.md5((str(int(time.time()))).encode('utf-8')).hexdigest()
+            print("Kik-Send-Error: {} ({})\n---\nTrace: {}\n---\nReq: {}".format(error_id, bot_username, traceback.format_exc(),
+                                                                                 json.dumps([m.__dict__ for m in messages])))
+            error_response_messages = []
+            for resp_message in response_messages: # type: Message
+                error_response_messages.append(TextMessage(
+                    to=resp_message.to,
+                    chat_id=resp_message.chat_id,
+                    body="Leider ist ein Fehler aufgetreten. Bitte versuche es erneut.\n\n" +
+                     "Sollte der Fehler weiterhin auftreten, mach bitte einen Screenshot und sprich @ismil1110 per PM an.\n\n" +
+                     "Fehler-Informationen: {}".format(error_id),
+                    keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
+                ))
+
+            kik_api.send_messages(error_response_messages)
 
     return Response(status=200)
 
