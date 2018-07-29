@@ -1051,8 +1051,8 @@ class MessageController:
                     keyboards=[SuggestedResponseKeyboard(responses=[
                         TextResponse("Hilfe"),
                         TextResponse((
-                            "@{} Hinzufügen @{} ".format(bot_username, self.get_from_userid(message)) +
-                            "Zeilenumbrüche sind nicht Pflicht."
+                            "Hinzufügen".format(bot_username, self.get_from_userid(message)) +
+                            "Neuer Charakter"
                         )),
                         TextResponse("Anzeigen @ismil1110".format(bot_username)),
                         TextResponse("Anzeigen".format(bot_username)),
