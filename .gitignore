@@ -7,6 +7,7 @@ pictures/*
 .idea
 /*.ini
 __pycache__
+venv
 
 !daemon/log/main/.gitkeep
 !pictures/.gitkeep

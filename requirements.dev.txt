@@ -3,6 +3,7 @@ flake8==2.5.4
 mock==2.0.0
 kik==1.5.0
 Flask==0.11
+FlaskBabel
 pyyaml
 pep8
 nose

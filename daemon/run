@@ -4,6 +4,7 @@
 export USER=slup0000
 export HOME=/home/slup0000
 export FLASK_APP=bot
+export PYTHONUNBUFFERED=1
 
 # Include the user-specific profile
 . $HOME/.bash_profile
@@ -15,5 +16,9 @@ trap "exit" INT TERM ERR
 trap "kill 0" EXIT
 
 exec env RPCHARBOT_CONF=config.ini /usr/local/bin/python3.6 -m flask run --with-threads --host 0.0.0.0 --port 64122 2>&1 &
+exec env RPCHARBOT_CONF=config_germanrpubot.ini /usr/local/bin/python3.6 -m flask run --with-threads --host 0.0.0.0 --port 65511 2>&1 &
+exec env RPCHARBOT_CONF=config_leviackermannbot.ini /usr/local/bin/python3.6 -m flask run --with-threads --host 0.0.0.0 --port 64853 2>&1 &
+exec env RPCHARBOT_CONF=config_rpghelper.ini /usr/local/bin/python3.6 -m flask run --with-threads --host 0.0.0.0 --port 61892 2>&1 &
+exec env RPCHARBOT_CONF=config_rpgdeutschbot.ini /usr/local/bin/python3.6 -m flask run --with-threads --host 0.0.0.0 --port 61631 2>&1 &
 
 wait

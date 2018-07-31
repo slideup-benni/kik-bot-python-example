@@ -4,9 +4,9 @@ import json
 import random
 import sqlite3
 
+from flask_babel import gettext as _
 from kik.messages import Message, StartChattingMessage, TextMessage, SuggestedResponseKeyboard, TextResponse, PictureMessage
 from modules.character_persistent_class import CharacterPersistentClass
-from modules.kik_api_cache import KikApiCache
 
 
 class MessageController:
@@ -38,7 +38,7 @@ class MessageController:
             response_messages.append(TextMessage(
                 to=message.from_user,
                 chat_id=message.chat_id,
-                body="Hi {}, mit mir kann man auch privat reden. Für eine Liste an Befehlen antworte einfach mit 'Hilfe'.".format(user.first_name),
+                body=_("Hi {user[first_name]}, mit mir kann man auch privat reden. Für eine Liste an Befehlen antworte einfach mit 'Hilfe'.").format(user=user.__dict__),
                 # keyboards are a great way to provide a menu of options for a user to respond with!
                 keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
             ))
@@ -52,8 +52,12 @@ class MessageController:
                 return [TextMessage(
                     to=message.from_user,
                     chat_id=message.chat_id,
-                    body="Hi {}, ich bin der Steckbrief-Bot der Gruppe #{}\n".format(user.first_name, self.config.get("KikGroup", "somegroup")) +
-                         "Für weitere Informationen tippe auf Antwort und dann auf Hilfe.",
+                    body=_("Hi {user[first_name]}, ich bin der Steckbrief-Bot der Gruppe #{kik_group_id}\n" +
+                         "Für weitere Informationen tippe auf Antwort und dann auf Hilfe."
+                    ).format(
+                        user=user.__dict__,
+                        kik_group_id=self.config.get("KikGroup", "somegroup")
+                    ),
                     keyboards=[SuggestedResponseKeyboard(responses=[
                         TextResponse("Hilfe"),
                         TextResponse("Regeln"),
@@ -102,9 +106,9 @@ class MessageController:
                     char_id = self.character_persistent_class.add_char(message_body.split(None, 2)[1][1:].strip(), self.get_from_userid(message), message_body_c.split(None, 2)[2].strip())
 
                     if char_id == CharacterPersistentClass.get_min_char_id():
-                        body = "Alles klar! Der erste Charakter für @{} wurde hinzugefügt.".format(selected_user)
+                        body = _("Alles klar! Der erste Charakter für @{user_id} wurde hinzugefügt.").format(user_id=selected_user)
                     else:
-                        body = "Alles klar! Der {}. Charakter für @{} wurde hinzugefügt.".format(char_id, selected_user)
+                        body = _("Alles klar! Der {char_id}. Charakter für @{user_id} wurde hinzugefügt.").format(char_id=char_id, user_id=selected_user)
 
                     response_messages.append(TextMessage(
                         to=message.from_user,
@@ -122,15 +126,16 @@ class MessageController:
                     body2 = None
 
                     if self.is_aliased(message) is False and char_id == CharacterPersistentClass.get_min_char_id():
-                        body = "Alles klar! Dein erster Charakter wurde hinzugefügt."
+                        body = _("Alles klar! Dein erster Charakter wurde hinzugefügt.")
                     elif self.is_aliased(message) is False:
-                        body = "Alles klar! Dein {}. Charakter wurde hinzugefügt.".format(char_id)
+                        body = _("Alles klar! Dein {char_id}. Charakter wurde hinzugefügt.").format(char_id=char_id)
                     else:
-                        body = "Alles klar! Dein Charakter wurde hinzugefügt. \n" + \
-                            "Der Charakter wurde temporär dem Alias-User @{} zugeordnet.\n\n".format(self.get_from_userid(message)) + \
-                            "Aufgrund der letzten Änderung von Kik, konnte ich dir den Charakter nicht direkt zuordnen.\n" + \
-                            "Damit der Charakter auch wirklich dir zugeordnet wird, sende bitte jetzt den folgenden Befehl (Bitte kopieren und deine Nutzer_Id ersetzen):"
-                        body2 = "@{} @Deine_Nutzer_Id".format(self.bot_username)
+                        body = _("Alles klar! Dein Charakter wurde hinzugefügt. \n" +
+                            "Der Charakter wurde temporär dem Alias-User @{alias_user_id} zugeordnet.\n\n" +
+                            "Aufgrund der letzten Änderung von Kik, konnte ich dir den Charakter nicht direkt zuordnen.\n" +
+                            "Damit der Charakter auch wirklich dir zugeordnet wird, sende bitte jetzt den folgenden Befehl " +
+                            "(Bitte kopieren und deine Nutzer_Id ersetzen):").format(alias_user_id=self.get_from_userid(message))
+                        body2 = _("@{user_id} @Deine_Nutzer_Id").format(user_id=self.bot_username)
                         user_command_status = CharacterPersistentClass.STATUS_DYN_MESSAGES
                         user_command_status_data = {
                             'add_user_id': "Verschieben @{} @{} {}".format(self.get_from_userid(message), "{}", char_id)
@@ -181,7 +186,7 @@ class MessageController:
                     response_messages.append(TextMessage(
                         to=message.from_user,
                         chat_id=message.chat_id,
-                        body="Alles klar! Der {}. Charakter für @{} wurde gespeichert.".format(char_id, user_id),
+                        body=_("Alles klar! Der {char_id}. Charakter für @{user_id} wurde gespeichert.").format(char_id=char_id, user_id=user_id),
                         keyboards=[SuggestedResponseKeyboard(responses=[
                             self.generate_text_response("Anzeigen", user_id, char_id, message),
                             self.generate_text_response("Bild-setzen", user_id, char_id, message),
@@ -198,7 +203,7 @@ class MessageController:
                     response_messages.append(TextMessage(
                         to=message.from_user,
                         chat_id=message.chat_id,
-                        body="Alles klar! Dein {}. Charakter wurde gespeichert.".format(char_id),
+                        body=_("Alles klar! Dein {char_id}. Charakter wurde gespeichert.").format(char_id=char_id),
                         keyboards=[SuggestedResponseKeyboard(responses=[
                             self.generate_text_response("Anzeigen", self.get_from_userid(message), char_id, message),
                             self.generate_text_response("Bild-setzen", self.get_from_userid(message), char_id, message),
@@ -217,7 +222,7 @@ class MessageController:
                     response_messages.append(TextMessage(
                         to=message.from_user,
                         chat_id=message.chat_id,
-                        body="Alles klar! Der erste Charakter für @{} wurde gespeichert.".format(user_id),
+                        body=_("Alles klar! Der erste Charakter für @{user_id} wurde gespeichert.").format(user_id=user_id),
                         keyboards=[SuggestedResponseKeyboard(responses=[
                             self.generate_text_response("Anzeigen", user_id, None, message),
                             self.generate_text_response("Bild-setzen", user_id, None, message),
@@ -230,7 +235,7 @@ class MessageController:
                     response_messages.append(TextMessage(
                         to=message.from_user,
                         chat_id=message.chat_id,
-                        body="Alles klar! Dein erster Charakter wurde gespeichert.",
+                        body=_("Alles klar! Dein erster Charakter wurde gespeichert."),
                         keyboards=[SuggestedResponseKeyboard(responses=[
                             self.generate_text_response("Anzeigen", self.get_from_userid(message), None, message),
                             self.generate_text_response("Bild-setzen", self.get_from_userid(message), None, message),
@@ -242,7 +247,7 @@ class MessageController:
                     response_messages.append(TextMessage(
                         to=message.from_user,
                         chat_id=message.chat_id,
-                        body="Fehler beim Aufruf des Befehls. Siehe Hilfe.",
+                        body=_("Fehler beim Aufruf des Befehls. Siehe Hilfe."),
                         keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
                     ))
 
@@ -289,7 +294,7 @@ class MessageController:
                 response_messages.append(TextMessage(
                     to=message.from_user,
                     chat_id=message.chat_id,
-                    body="Alles Klar! Bitte schicke jetzt das Bild direkt an @{}".format(self.bot_username)
+                    body=_("Alles Klar! Bitte schicke jetzt das Bild direkt an @{bot_username}").format(bot_username=self.bot_username)
                 ))
 
             #
@@ -338,7 +343,7 @@ class MessageController:
                     response_messages.append(TextMessage(
                         to=message.from_user,
                         chat_id=message.chat_id,
-                        body="Es wurde kein Charakter mit dem Namen {} des Nutzers @{} gefunden".format(char_name, selected_user),
+                        body=_("Es wurde kein Charakter mit dem Namen {char_name} des Nutzers @{user_id} gefunden").format(char_name=char_name, user_id=selected_user),
                         keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Liste")])]
                     ))
                 elif chars is not None and len(chars) > 1:
@@ -352,21 +357,25 @@ class MessageController:
                     response_messages.append(TextMessage(
                         to=message.from_user,
                         chat_id=message.chat_id,
-                        body="Es wurden {} Charaktere mit dem Namen {} des Nutzers @{} gefunden".format(len(chars), char_name, selected_user),
+                        body=_("Es wurden {cnt} Charaktere mit dem Namen {char_name} des Nutzers @{user_id} gefunden").format(
+                            cnt=len(chars),
+                            char_name=char_name,
+                            user_id=selected_user
+                        ),
                         keyboards=[SuggestedResponseKeyboard(responses=resp)]
                     ))
                 elif char_data is None and char_id is not None:
                     response_messages.append(TextMessage(
                         to=message.from_user,
                         chat_id=message.chat_id,
-                        body="Keine Daten zum {}. Charakter des Nutzers @{} gefunden".format(char_id, selected_user),
+                        body=_("Keine Daten zum {char_id}. Charakter des Nutzers @{user_id} gefunden").format(char_id=char_id, user_id=selected_user),
                         keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Liste")])]
                     ))
                 elif char_data is None:
                     response_messages.append(TextMessage(
                         to=message.from_user,
                         chat_id=message.chat_id,
-                        body="Keine Daten zum Nutzer @{} gefunden".format(selected_user),
+                        body=_("Keine Daten zum Nutzer @{user_id} gefunden").format(user_id=selected_user),
                         keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Liste")])]
                     ))
                 else:
@@ -392,9 +401,16 @@ class MessageController:
                         to_char_id = self.character_persistent_class.move_char(selected_from_user, selected_to_user, char_id)
 
                         if char_id is not None and char_id != CharacterPersistentClass.get_min_char_id():
-                            body = "Du hast erfolgreich deinen {}. Charakter auf @{} ({}.) verschoben.".format(char_id, selected_to_user, to_char_id)
+                            body = _("Du hast erfolgreich deinen {from_char_id}. Charakter auf @{to_user_id} ({to_char_id}.) verschoben.").format(
+                                from_char_id=char_id,
+                                to_user_id=selected_to_user,
+                                to_char_id=to_char_id
+                            )
                         else:
-                            body = "Du hast erfolgreich deinen Charakter auf @{} ({}.) verschoben.".format(selected_to_user, to_char_id)
+                            body = _("Du hast erfolgreich deinen Charakter auf @{to_user_id} ({to_char_id}.) verschoben.").format(
+                                to_user_id=selected_to_user,
+                                to_char_id=to_char_id
+                            )
 
                         response_messages.append(TextMessage(
                             to=message.from_user,
@@ -412,9 +428,18 @@ class MessageController:
                         to_char_id = self.character_persistent_class.move_char(selected_from_user, selected_to_user, char_id)
 
                         if char_id is not None and char_id != CharacterPersistentClass.get_min_char_id():
-                            body = "Du hast erfolgreich den {}. Charakter von @{} auf @{} ({}.) verschoben.".format(char_id, selected_from_user, selected_to_user, to_char_id)
+                            body = _("Du hast erfolgreich den {from_char_id}. Charakter von @{from_user_id} auf @{to_user_id} ({to_char_id}.) verschoben.").format(
+                                from_char_id=char_id,
+                                from_user_id=selected_from_user,
+                                to_user_id=selected_to_user,
+                                to_char_id=to_char_id
+                            )
                         else:
-                            body = "Du hast erfolgreich den ersten Charakter von @{} auf @{} ({}.) verschoben.".format(selected_from_user, selected_to_user, to_char_id)
+                            body = _("Du hast erfolgreich den ersten Charakter von @{from_user_id} auf @{to_user_id} ({to_char_id}.) verschoben.").format(
+                                from_user_id=selected_from_user,
+                                to_user_id=selected_to_user,
+                                to_char_id=to_char_id
+                            )
 
                         response_messages.append(TextMessage(
                             to=message.from_user,
@@ -430,7 +455,7 @@ class MessageController:
                         response_messages.append(TextMessage(
                             to=message.from_user,
                             chat_id=message.chat_id,
-                            body="Du kannst keine Charaktere von anderen Nutzern verschieben.",
+                            body=_("Du kannst keine Charaktere von anderen Nutzern verschieben."),
                             keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Liste")])]
                         ))
 
@@ -438,7 +463,7 @@ class MessageController:
                     response_messages.append(TextMessage(
                         to=message.from_user,
                         chat_id=message.chat_id,
-                        body="Fehler beim Aufruf des Befehls. Siehe Hilfe.",
+                        body=_("Fehler beim Aufruf des Befehls. Siehe Hilfe."),
                         keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
                     ))
 
@@ -458,9 +483,9 @@ class MessageController:
                         self.character_persistent_class.remove_char(selected_user, self.get_from_userid(message), char_id)
 
                         if char_id is not None:
-                            body = "Du hast erfolgreich deinen {}. Charakter gelöscht".format(char_id)
+                            body = _("Du hast erfolgreich deinen {char_id}. Charakter gelöscht").format(char_id=char_id)
                         else:
-                            body = "Du hast erfolgreich deinen Charakter gelöscht."
+                            body = _("Du hast erfolgreich deinen Charakter gelöscht.")
 
                         response_messages.append(TextMessage(
                             to=message.from_user,
@@ -473,9 +498,9 @@ class MessageController:
                         self.character_persistent_class.remove_char(selected_user,self.get_from_userid(message), char_id)
 
                         if char_id is not None:
-                            body = "Du hast erfolgreich den {}. Charakter von @{} gelöscht.".format(char_id, selected_user)
+                            body = _("Du hast erfolgreich den {char_id}. Charakter von @{user_id} gelöscht.").format(char_id=char_id, user_id=selected_user)
                         else:
-                            body = "Du hast erfolgreich den ersten Charakter von @{} gelöscht.".format(selected_user)
+                            body = _("Du hast erfolgreich den ersten Charakter von @{user_id} gelöscht.").format(user_id=selected_user)
 
                         response_messages.append(TextMessage(
                             to=message.from_user,
@@ -488,7 +513,7 @@ class MessageController:
                         response_messages.append(TextMessage(
                             to=message.from_user,
                             chat_id=message.chat_id,
-                            body="Du kannst keine Charaktere von anderen Nutzern löschen.",
+                            body=_("Du kannst keine Charaktere von anderen Nutzern löschen."),
                             keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Liste")])]
                         ))
 
@@ -496,7 +521,7 @@ class MessageController:
                     response_messages.append(TextMessage(
                         to=message.from_user,
                         chat_id=message.chat_id,
-                        body="Fehler beim Aufruf des Befehls. Siehe Hilfe.",
+                        body=_("Fehler beim Aufruf des Befehls. Siehe Hilfe."),
                         keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
                     ))
 
@@ -516,9 +541,9 @@ class MessageController:
                         self.character_persistent_class.remove_last_char_change(selected_user, self.get_from_userid(message))
 
                         if char_id is not None:
-                            body = "Du hast erfolgreich die letzte Änderung am Charakter {} gelöscht.".format(char_id)
+                            body = _("Du hast erfolgreich die letzte Änderung am Charakter {char_id} gelöscht.").format(char_id=char_id)
                         else:
-                            body = "Du hast erfolgreich die letzte Änderung gelöscht."
+                            body = _("Du hast erfolgreich die letzte Änderung gelöscht.")
 
                         response_messages.append(TextMessage(
                             to=message.from_user,
@@ -534,9 +559,9 @@ class MessageController:
                         self.character_persistent_class.remove_last_char_change(selected_user, self.get_from_userid(message))
 
                         if char_id is not None:
-                            body = "Du hast erfolgreich die letzte Änderung des Charakters {} von @{} gelöscht.".format(char_id, selected_user)
+                            body = _("Du hast erfolgreich die letzte Änderung des Charakters {char_id} von @{user_id} gelöscht.").format(char_id=char_id, user_id=selected_user)
                         else:
-                            body = "Du hast erfolgreich die letzte Änderung des Charakters von @{} gelöscht.".format(selected_user)
+                            body = _("Du hast erfolgreich die letzte Änderung des Charakters von @{user_id} gelöscht.").format(user_id=selected_user)
 
                         response_messages.append(TextMessage(
                             to=message.from_user,
@@ -552,7 +577,7 @@ class MessageController:
                         response_messages.append(TextMessage(
                             to=message.from_user,
                             chat_id=message.chat_id,
-                            body="Du kannst keine Charaktere von anderen Nutzern löschen.",
+                            body=_("Du kannst keine Charaktere von anderen Nutzern löschen."),
                             keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Liste")])]
                         ))
 
@@ -560,7 +585,7 @@ class MessageController:
                     response_messages.append(TextMessage(
                         to=message.from_user,
                         chat_id=message.chat_id,
-                        body="Fehler beim Aufruf des Befehls. Siehe Hilfe.",
+                        body=_("Fehler beim Aufruf des Befehls. Siehe Hilfe."),
                         keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
                     ))
 
@@ -581,7 +606,7 @@ class MessageController:
                         response_messages.append(TextMessage(
                             to=message.from_user,
                             chat_id=message.chat_id,
-                            body="Für die Suchanfrage wurden keine Charaktere gefunden.",
+                            body=_("Für die Suchanfrage wurden keine Charaktere gefunden."),
                             keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Liste")])]
                         ))
 
@@ -600,7 +625,7 @@ class MessageController:
                         response_messages.append(TextMessage(
                             to=message.from_user,
                             chat_id=message.chat_id,
-                            body="Es wurden mehrere Charaktere gefunden, die deiner Suchanfrage entsprechen.",
+                            body=_("Es wurden mehrere Charaktere gefunden, die deiner Suchanfrage entsprechen."),
                             keyboards=[SuggestedResponseKeyboard(responses=resp)]
                         ))
 
@@ -610,7 +635,7 @@ class MessageController:
                     response_messages.append(TextMessage(
                         to=message.from_user,
                         chat_id=message.chat_id,
-                        body="Fehler beim Aufruf des Befehls. Siehe Hilfe.",
+                        body=_("Fehler beim Aufruf des Befehls. Siehe Hilfe."),
                         keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
                     ))
 
@@ -628,7 +653,7 @@ class MessageController:
                             response_messages.append(TextMessage(
                                 to=message.from_user,
                                 chat_id=message.chat_id,
-                                body="Der Befehl '{}' existiert nicht.".format(static_message['command']),
+                                body=_("Der Befehl '{command}' existiert nicht.").format(command=static_message['command']),
                                 keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Admin-Hilfe")])]
                             ))
 
@@ -643,16 +668,20 @@ class MessageController:
                             response_messages.append(TextMessage(
                                 to=message.from_user,
                                 chat_id=message.chat_id,
-                                body="Du hast erfolgreich die Tastaturen für den statischen Befehl '{}' aktualisiert.\n".format(static_message["command"]) +
+                                body=_("Du hast erfolgreich die Tastaturen für den statischen Befehl '{command}' aktualisiert.\n" +
                                 "Du kannst auch alternative Befehle (wie z.B. 'h' für Hilfe oder 'rules' für Regeln) hinzufügen. Dies geht mit dem Befehl:\n\n" +
-                                "@{} Setze-Befehl-Alternative-Befehle {} {}".format(self.bot_username, static_message["command"], example_alt_commands),
+                                "@{bot_username} Setze-Befehl-Alternative-Befehle {command} {curr_alt_cmd}").format(
+                                    command=static_message["command"],
+                                    bot_username=self.bot_username,
+                                    curr_alt_cmd=example_alt_commands
+                                ),
                                 keyboards=[SuggestedResponseKeyboard(responses=[TextResponse(static_message['command']), TextResponse("Admin-Hilfe")])]
                             ))
                     else:
                         response_messages.append(TextMessage(
                             to=message.from_user,
                             chat_id=message.chat_id,
-                            body="Fehler beim Aufruf des Befehls. Siehe Admin-Hilfe.",
+                            body=_("Fehler beim Aufruf des Befehls. Siehe Admin-Hilfe."),
                             keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Admin-Hilfe")])]
                         ))
                 else:
@@ -676,7 +705,7 @@ class MessageController:
                             response_messages.append(TextMessage(
                                 to=message.from_user,
                                 chat_id=message.chat_id,
-                                body="Der Befehl '{}' existiert nicht.".format(static_message['command']),
+                                body=_("Der Befehl '{command}' existiert nicht.").format(command=static_message['command']),
                                 keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Admin-Hilfe")])]
                             ))
 
@@ -691,23 +720,27 @@ class MessageController:
                             response_messages.append(TextMessage(
                                 to=message.from_user,
                                 chat_id=message.chat_id,
-                                body="Du hast erfolgreich die alternativen Befehle für den Befehl '{}' aktualisiert.\n".format(static_message["command"]) +
+                                body=_("Du hast erfolgreich die alternativen Befehle für den Befehl '{command}' aktualisiert.\n" +
                                 "Du kannst jetzt noch mit dem folgenden Befehl die Antwort-Tastaturen setzen (Komma-getrennt):\n\n" +
-                                "@{} Setze-Befehl-Tastaturen {} {}".format(self.bot_username, static_message["command"], example_keyboards),
+                                "@{bot_username} Setze-Befehl-Tastaturen {command} {curr_keyboards}").format(
+                                    command=static_message["command"],
+                                    bot_username=self.bot_username,
+                                    curr_keyboards=example_keyboards
+                                ),
                                 keyboards=[SuggestedResponseKeyboard(responses=[TextResponse(static_message['command']), TextResponse("Admin-Hilfe")])]
                             ))
                     else:
                         response_messages.append(TextMessage(
                             to=message.from_user,
                             chat_id=message.chat_id,
-                            body="Fehler beim Aufruf des Befehls. Siehe Admin-Hilfe.",
+                            body=_("Fehler beim Aufruf des Befehls. Siehe Admin-Hilfe."),
                             keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Admin-Hilfe")])]
                         ))
                 else:
                     response_messages.append(TextMessage(
                         to=message.from_user,
                         chat_id=message.chat_id,
-                        body="Du kannst keine statischen Antworten setzen."
+                        body=_("Du kannst keine statischen Antworten setzen.")
                     ))
 
             #
@@ -736,25 +769,31 @@ class MessageController:
                         response_messages.append(TextMessage(
                             to=message.from_user,
                             chat_id=message.chat_id,
-                            body="Du hast erfolgreich die statische Antwort auf den Befehl '{}' aktualisiert.\n".format(static_message["command"]) +
+                            body=_("Du hast erfolgreich die statische Antwort auf den Befehl '{command}' aktualisiert.\n" +
                                 "Du kannst jetzt noch mit dem folgenden Befehl die Antwort-Tastaturen setzen (Komma-getrennt):\n\n" +
-                                "@{} Setze-Befehl-Tastaturen {} {}\n\n\n".format(self.bot_username, static_message["command"], example_keyboards) +
+                                "@{bot_username} Setze-Befehl-Tastaturen {command} {curr_keyboards}\n\n\n" +
                                 "Du kannst auch alternative Befehle (wie z.B. 'h' für Hilfe oder 'rules' für Regeln) hinzufügen. Dies geht mit dem Befehl:\n\n" +
-                                "@{} Setze-Befehl-Alternative-Befehle {} {}".format(self.bot_username, static_message["command"], example_alt_commands),
+                                "@{bot_username} Setze-Befehl-Alternative-Befehle {command} {curr_alt_cmd}"
+                            ).format(
+                                command=static_message["command"],
+                                bot_username=self.bot_username,
+                                curr_keyboards=example_keyboards,
+                                curr_alt_cmd=example_alt_commands
+                            ),
                             keyboards=[SuggestedResponseKeyboard(responses=[TextResponse(static_message["command"]), TextResponse("Admin-Hilfe")])]
                         ))
                     else:
                         response_messages.append(TextMessage(
                             to=message.from_user,
                             chat_id=message.chat_id,
-                            body="Fehler beim Aufruf des Befehls. Siehe Admin-Hilfe.",
+                            body=_("Fehler beim Aufruf des Befehls. Siehe Admin-Hilfe."),
                             keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Admin-Hilfe")])]
                         ))
                 else:
                     response_messages.append(TextMessage(
                         to=message.from_user,
                         chat_id=message.chat_id,
-                        body="Du kannst keine statischen Antworten setzen."
+                        body=_("Du kannst keine statischen Antworten setzen.")
                     ))
 
             #
@@ -769,24 +808,24 @@ class MessageController:
                         response_messages.append(TextMessage(
                             to=message.from_user,
                             chat_id=message.chat_id,
-                            body="Du hast erfolgreich den Nutzer @{} berechtigt.".format(selected_user)
+                            body=_("Du hast erfolgreich den Nutzer @{user_id} berechtigt.").format(user_id=selected_user)
                         ))
 
                     else:
                         response_messages.append(TextMessage(
                             to=message.from_user,
                             chat_id=message.chat_id,
-                            body="Der Nutzer @{} konnte nicht berechtigt werden.\n\n".format(selected_user) +
+                            body=_("Der Nutzer @{user_id} konnte nicht berechtigt werden.\n\n" +
                                 "Dies kann folgende Ursachen haben:\n" +
                                 "1. Der Nutzer ist bereits berechtigt.\n" +
-                                "2. Du bist nicht berechtigt, diesen Nutzer zu berechtigen."
+                                "2. Du bist nicht berechtigt, diesen Nutzer zu berechtigen.").format(user_id=selected_user)
                         ))
 
                 else:
                     response_messages.append(TextMessage(
                         to=message.from_user,
                         chat_id=message.chat_id,
-                        body="Fehler beim Aufruf des Befehls. Siehe Hilfe.",
+                        body=_("Fehler beim Aufruf des Befehls. Siehe Hilfe."),
                         keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
                     ))
 
@@ -802,23 +841,23 @@ class MessageController:
                         response_messages.append(TextMessage(
                             to=message.from_user,
                             chat_id=message.chat_id,
-                            body="Du hast erfolgreich den Nutzer @{} entmächtigt.".format(selected_user)
+                            body=_("Du hast erfolgreich den Nutzer @{user_id} entmächtigt.").format(user_id=selected_user)
                         ))
 
                     else:
                         response_messages.append(TextMessage(
                             to=message.from_user,
                             chat_id=message.chat_id,
-                            body="Der Nutzer @{} konnte nicht entmächtigt werden.\n\n".format(selected_user) +
+                            body=_("Der Nutzer @{user_id} konnte nicht entmächtigt werden.\n\n" +
                                  "Dies kann folgende Ursachen haben:\n" +
-                                 "Du bist nicht berechtigt, diesen Nutzer zu entmächtigen."
+                                 "Du bist nicht berechtigt, diesen Nutzer zu entmächtigen.").format(user_id=selected_user)
                         ))
 
                 else:
                     response_messages.append(TextMessage(
                         to=message.from_user,
                         chat_id=message.chat_id,
-                        body="Fehler beim Aufruf des Befehls. Siehe Hilfe.",
+                        body=_("Fehler beim Aufruf des Befehls. Siehe Hilfe."),
                         keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
                     ))
 
@@ -839,13 +878,20 @@ class MessageController:
                 chars = self.character_persistent_class.list_all_users_with_chars(page)
                 user_ids = [item['user_id'] for item in chars[:limit]]
 
-                body = "Liste aller Nutzer mit Charakteren:\n--- Seite {} ---\n".format(page)
+                body = _("Liste aller Nutzer mit Charakteren:\n--- Seite {page} ---\n").format(page=page)
                 number = (page-1)*limit+1
                 for char in chars[:limit]:
-                    b = "{}.: {}\n".format(number, self.get_name(char['user_id'])) + \
-                        "Nutzername: @{}\n".format(char['user_id']) + \
-                        "Anz. Charaktere: {}\n".format(char['chars_cnt']) + \
-                        "letzte Änderung: {}".format(datetime.datetime.fromtimestamp(char['created']).strftime('%d.%m.%Y'))
+                    b = _("{consecutive_number}.: {user_name}\n" +
+                        "Nutzername: @{user_id}\n" +
+                        "Anz. Charaktere: {chars_cnt}\n" +
+                        "letzte Änderung: {last_change:%d.%m.%Y}"
+                    ).format(
+                        consecutive_number=number,
+                        user_name=self.get_name(char['user_id']),
+                        user_id=char['user_id'],
+                        chars_cnt=char['chars_cnt'],
+                        last_change=datetime.datetime.fromtimestamp(char['created'])
+                    )
 
                     number += 1
 
@@ -871,9 +917,9 @@ class MessageController:
                 if dyn_message_data != {}:
                     user_command_status = CharacterPersistentClass.STATUS_DYN_MESSAGES
                     user_command_status_data = dyn_message_data
-                    body += "\n\n(Weitere Seiten: {} und {} zum navigieren)".format(
-                        u"\U00002B05\U0000FE0F",
-                        u"\U000027A1\U0000FE0F"
+                    body += _("\n\n(Weitere Seiten: {icon_left} und {icon_right} zum navigieren)").format(
+                        icon_left=u"\U00002B05\U0000FE0F",
+                        icon_right=u"\U000027A1\U0000FE0F"
                     )
 
                 responses += [TextResponse("Anzeigen @{}".format(x)) for x in user_ids]
@@ -893,14 +939,14 @@ class MessageController:
                 response_messages.append(TextMessage(
                     to=message.from_user,
                     chat_id=message.chat_id,
-                    body=(
+                    body=_(
                         "Die folgende Charaktervorlage kann genutzt werden um einen neuen Charakter im RPG zu erstellen.\n"
                         "Dies ist eine notwendige Voraussetung um am RPG teilnehmen zu können.\n"
-                        "Bitte poste diese Vorlage ausgefüllt im Gruppenchannel #{}\n".format(self.config.get("KikGroup", "somegroup")) +
+                        "Bitte poste diese Vorlage ausgefüllt im Gruppenchannel #{kik_group_id}\n"
                         "Wichtig: Bitte lasse die Schlüsselwörter (Vorname:, Nachname:, etc.) stehen.\n"
                         "Möchtest du die Vorlage nicht über den Bot speichern, dann entferne bitte die erste Zeile.\n"
                         "Hast du bereits einen Charakter und möchtest diesen aktualisieren, dann schreibe in der ersten Zeile 'ändern' anstatt 'hinzufügen'"
-                    ),
+                    ).format(kik_group_id=self.config.get("KikGroup", "somegroup")),
                     keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe"), TextResponse("Weitere-Beispiele")])]
                 ))
 
@@ -910,7 +956,7 @@ class MessageController:
                     to=message.from_user,
                     chat_id=message.chat_id,
                     body=(
-                        "@{} hinzufügen \n".format(self.bot_username) + template_message["response"]
+                        _("@{bot_username} hinzufügen \n").format(bot_username=self.bot_username) + template_message["response"]
                     ),
                     keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe"), TextResponse("Weitere-Beispiele")])]
                 ))
@@ -919,37 +965,40 @@ class MessageController:
                 response_messages.append(TextMessage(
                     to=message.from_user,
                     chat_id=message.chat_id,
-                    body=(
+                    body=_(
                         "Weitere Beispiele\n"
                         "Alle Beispiele sind in einzelnen Abschnitten mittels ----- getrennt.\n\n"
                         "------\n"
-                        "@{} Hinzufügen @{}\n".format(self.bot_username, self.get_from_userid(message)) +
+                        "@{bot_username} Hinzufügen @{user_id}\n"
                         "Hier kann der Text zum Charakter stehen\n"
                         "Zeilenumbrüche sind erlaubt\n"
                         "In diesem Beispiel wurde der Nickname angegeben\n"
                         "------\n"
-                        "@{} Ändern\n".format(self.bot_username) +
+                        "@{bot_username} Ändern\n"
                         "Hier kann der Text zum Charakter stehen\n"
                         "Die Befehle Ändern und Hinzufügen bewirken das gleiche\n"
                         "Wird kein Benutzername angegeben so betrifft die Änderung bzw. das Hinzufügen einen selbst\n"
                         "------\n"
-                        "@{} Anzeigen @ismil1110\n".format(self.bot_username) +
+                        "@{bot_username} Anzeigen @ismil1110\n"
                         "------\n"
-                        "@{} Anzeigen\n".format(self.bot_username) +
+                        "@{bot_username} Anzeigen\n"
                         "------\n"
-                        "@{} Löschen @{}\n".format(self.bot_username, self.get_from_userid(message)) +
+                        "@{bot_username} Löschen @{user_id}\n"
                         "------\n"
-                        "@{} Liste\n".format(self.bot_username) +
+                        "@{bot_username} Liste\n"
                         "------\n"
-                        "@{} Hilfe\n".format(self.bot_username) +
+                        "@{bot_username} Hilfe\n"
                         "------\n"
-                        "@{} Würfeln 8\n".format(self.bot_username) +
+                        "@{bot_username} Würfeln 8\n"
                         "------\n"
-                        "@{} Würfeln Rot, Grün, Blau, Schwarz, Weiß\n".format(self.bot_username) +
+                        "@{bot_username} Würfeln Rot, Grün, Blau, Schwarz, Weiß\n"
                         "------\n"
-                        "Bitte beachten, dass alle Befehle an den Bot mit @{} beginnen müssen. Die Nachricht darf".format(self.bot_username) +
+                        "Bitte beachten, dass alle Befehle an den Bot mit @{bot_username} beginnen müssen. Die Nachricht darf"
                         " mit keinem Leerzeichen oder sonstigen Zeichen beginnen, da ansonsten die Nachricht nicht an den Bot weitergeleitet wird.\n"
                         "Wenn du bei dieser Nachricht auf Antworten tippst, werden dir unten 4 der oben gezeigten Beispiele als Vorauswahl angeboten"
+                    ).format(
+                        bot_username=self.bot_username,
+                        user_id=self.get_from_userid(message),
                     ),
                     keyboards=[SuggestedResponseKeyboard(responses=[
                         TextResponse("Hilfe"),
@@ -972,18 +1021,18 @@ class MessageController:
             elif message_command in ["würfel", "würfeln", "dice", u"\U0001F3B2", "münze", "coin"]:
 
                 if message_command in ["münze", "coin"]:
-                    possibilities = ["Kopf", "Zahl"]
-                    thing = "Die Münze zeigt"
+                    possibilities = [_("Kopf"), _("Zahl")]
+                    thing = _("Die Münze zeigt")
                 elif len(message_body.split(None, 1)) == 1 or message_body.split(None, 1)[1].strip() == "":
                     possibilities = list(range(1,7))
-                    thing = "Der Würfel zeigt"
+                    thing = _("Der Würfel zeigt")
                 elif message_body.split(None, 1)[1].isdigit():
                     count = int(message_body.split(None, 1)[1])
                     possibilities = list(range(1,count+1)) if count > 0 else [1]
-                    thing = "Der Würfel zeigt"
+                    thing = _("Der Würfel zeigt")
                 else:
                     possibilities = [x.strip() for x in message_body_c.split(None, 1)[1].split(',')]
-                    thing = "Ich wähle"
+                    thing = _("Ich wähle")
 
                 user_command_status = CharacterPersistentClass.STATUS_DYN_MESSAGES
                 user_command_status_data = {
@@ -1011,7 +1060,14 @@ class MessageController:
 
                     keyboard_responses = list(map(TextResponse, keyboards))
 
-                    body_split = static_message["response"].split("\n")
+                    body_split = static_message["response"].format(
+                        bot_username=self.bot_username,
+                        user=user.__dict__,
+                        command=message_command,
+                        kik_group_id=self.config.get("KikGroup", "somegroup"),
+                        user_id=self.get_from_userid(message),
+                        message=message
+                    ).split("\n")
                     new_body = ""
                     for b in body_split:
                         if len(new_body) + len(b) + 2 < 1500:
@@ -1036,14 +1092,14 @@ class MessageController:
                     response_messages.append(TextMessage(
                         to=message.from_user,
                         chat_id=message.chat_id,
-                        body="Sorry {}, den Befehl '{}' kenne ich nicht.".format(user.first_name, message_command),
+                        body=_("Sorry {user[first_name]}, den Befehl '{command}' kenne ich nicht.").format(user=user.__dict__, command=message_command),
                         keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
                     ))
             else:
                 response_messages.append(TextMessage(
                     to=message.from_user,
                     chat_id=message.chat_id,
-                    body="Sorry {}, ich habe dich nicht verstanden.".format(user.first_name),
+                    body=_("Sorry {user[first_name]}, ich habe dich nicht verstanden.").format(user=user.__dict__),
                     keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
                 ))
         elif isinstance(message, PictureMessage):
@@ -1052,17 +1108,17 @@ class MessageController:
                 response_messages.append(TextMessage(
                     to=message.from_user,
                     chat_id=message.chat_id,
-                    body="Sorry {}, mit diesem Bild kann ich leider nichts anfangen.".format(user.first_name),
+                    body=_("Sorry {user[first_name]}, mit diesem Bild kann ich leider nichts anfangen.").format(user=user.__dict__),
                     keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
                 ))
 
             else:
                 success = self.character_persistent_class.set_char_pic(status_obj['data']['user_id'], self.get_from_userid(message), message.pic_url, status_obj['data']['char_id'])
                 if success is True:
-                    body = "Alles klar! Das Bild wurde gesetzt."
+                    body = _("Alles klar! Das Bild wurde gesetzt.")
                     show_resp = self.generate_text_response("Anzeigen", status_obj['data']['user_id'], status_obj['data']['char_id'], message)
                 else:
-                    body = "Beim hochladen ist ein Fehler aufgetreten. Bitte versuche es erneut."
+                    body = _("Beim hochladen ist ein Fehler aufgetreten. Bitte versuche es erneut.")
                     show_resp = self.generate_text_response("Bild-setzen", status_obj['data']['user_id'], status_obj['data']['char_id'], message)
                     user_command_status = status_obj['status']
                     user_command_status_data = status_obj['data']
@@ -1083,7 +1139,7 @@ class MessageController:
             response_messages.append(TextMessage(
                 to=message.from_user,
                 chat_id=message.chat_id,
-                body="Sorry {}, ich habe dich nicht verstanden.".format(user.first_name),
+                body=_("Sorry {user[first_name]}, ich habe dich nicht verstanden.").format(user=user.__dict__),
                 keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
             ))
 
@@ -1121,8 +1177,8 @@ class MessageController:
             return TextMessage(
                 to=message.from_user,
                 chat_id=message.chat_id,
-                body="Du bist nicht berechtigt diesen Befehl auszuführen!\n" +
-                     "Bitte melde dich in der Gruppe #{} und erfrage eine Berechtigung.".format(config.get("KikGroup", "somegroup")),
+                body=_("Du bist nicht berechtigt diesen Befehl auszuführen!\n" +
+                     "Bitte melde dich in der Gruppe #{kik_group_id} und erfrage eine Berechtigung.").format(kik_group_id=config.get("KikGroup", "somegroup")),
                 keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
             )
         return True
@@ -1143,9 +1199,9 @@ class MessageController:
             keyboard_responses.append(TextResponse(u"\U000027A1\U0000FE0F"))
 
         if dyn_message_data != {}:
-            body_char_appendix = "\n\n(Weitere Charaktere des Nutzers vorhanden: {} und {} zum navigieren)".format(
-                u"\U00002B05\U0000FE0F",
-                u"\U000027A1\U0000FE0F"
+            body_char_appendix = _("\n\n(Weitere Charaktere des Nutzers vorhanden: {icon_left} und {icon_right} zum navigieren)").format(
+                icon_left=u"\U00002B05\U0000FE0F",
+                icon_right=u"\U000027A1\U0000FE0F"
             )
             user_command_status = CharacterPersistentClass.STATUS_DYN_MESSAGES
             user_command_status_data = dyn_message_data
@@ -1164,12 +1220,12 @@ class MessageController:
                 pic_url=pic_url,
             ))
 
-        body = "{}\n\n---\nCharakter von {}\nErstellt von {}\nErstellt am {}{}".format(
-            char_data['text'],
-            MessageController.get_name(char_data["user_id"], append_user_id=True),
-            MessageController.get_name(char_data['creator_id'], append_user_id=True),
-            datetime.datetime.fromtimestamp(char_data['created']).strftime('%Y-%m-%d %H:%M:%S'),
-            body_char_appendix
+        body = _("{char[text]}\n\n---\nCharakter von {from_user}\nErstellt von {creator_user}\nErstellt am {created:%d.%m.%Y %H:%M}{appendix}").format(
+            char=char_data,
+            from_user=MessageController.get_name(char_data["user_id"], append_user_id=True),
+            creator_user=MessageController.get_name(char_data['creator_id'], append_user_id=True),
+            created=datetime.datetime.fromtimestamp(char_data['created']),
+            appendix=body_char_appendix
         )
 
         body_split = body.split("\n")

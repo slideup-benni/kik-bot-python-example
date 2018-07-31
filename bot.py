@@ -31,14 +31,16 @@ import traceback
 from configparser import SectionProxy
 from pathlib import Path
 from flask import Flask, request, Response, send_from_directory
+from flask_babel import Babel, force_locale
+from flask_babel import gettext as _
 from kik import User, KikApi, Configuration
 from kik.messages import messages_from_json, TextMessage, SuggestedResponseKeyboard, TextResponse, Message
-
 from modules.character_persistent_class import CharacterPersistentClass
 from modules.kik_api_cache import KikApiCache
 from modules.message_controller import MessageController
 
 app = Flask(__name__)
+babel = Babel(app)
 
 
 @app.route("/picture/<path:path>", methods=["GET"])
@@ -67,34 +69,49 @@ def incoming():
     for message in messages:
         try:
             user = kik_api.get_user(message.from_user) # type: User
-            response_messages += message_controller.process_message(message, user)
+            with force_locale("de"):
+                response_messages += message_controller.process_message(message, user)
         except:
             error_id = hashlib.md5((str(int(time.time())) + message.from_user).encode('utf-8')).hexdigest()
-            print("Message-Error: {} ({})\n---\nTrace: {}\n---\nReq: {}".format(error_id, bot_username, traceback.format_exc(), json.dumps(message.__dict__)))
+            print("Message-Error: {error_id} ({bot_username})\n---\nTrace: {trace}\n---\nReq: {request}".format(
+                error_id=error_id,
+                bot_username=bot_username,
+                trace=traceback.format_exc(),
+                request=json.dumps(message.__dict__))
+            )
+
+            if isinstance(message, TextMessage) and len(message.body) < 100:
+                resp_keyboard = [TextResponse(message.body), TextResponse("Hilfe")]
+            else:
+                resp_keyboard = [TextResponse("Hilfe")]
 
             response_messages += [TextMessage(
                 to=message.from_user,
                 chat_id=message.chat_id,
-                body="Leider ist ein Fehler aufgetreten. Bitte versuche es erneut.\n\n" +
+                body=_("Leider ist ein Fehler aufgetreten. Bitte versuche es erneut.\n\n" +
                      "Sollte der Fehler weiterhin auftreten, mach bitte einen Screenshot und sprich @ismil1110 per PM an.\n\n" +
-                     "Fehler-Informationen: {}".format(error_id),
-                keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
+                     "Fehler-Informationen: {error_id}").format(error_id=error_id),
+                keyboards=[SuggestedResponseKeyboard(responses=resp_keyboard)]
             )]
 
         try:
             kik_api.send_messages(response_messages)
         except:
             error_id = hashlib.md5((str(int(time.time()))).encode('utf-8')).hexdigest()
-            print("Kik-Send-Error: {} ({})\n---\nTrace: {}\n---\nReq: {}".format(error_id, bot_username, traceback.format_exc(),
-                                                                                 json.dumps([m.__dict__ for m in messages])))
+            print("Kik-Send-Error: {error_id} ({bot_username})\n---\nTrace: {trace}\n---\nReq: {request}".format(
+                error_id=error_id,
+                bot_username=bot_username,
+                trace=traceback.format_exc(),
+                request=json.dumps([m.__dict__ for m in messages]))
+            )
             error_response_messages = []
             for resp_message in response_messages: # type: Message
                 error_response_messages.append(TextMessage(
                     to=resp_message.to,
                     chat_id=resp_message.chat_id,
-                    body="Leider ist ein Fehler aufgetreten. Bitte versuche es erneut.\n\n" +
-                     "Sollte der Fehler weiterhin auftreten, mach bitte einen Screenshot und sprich @ismil1110 per PM an.\n\n" +
-                     "Fehler-Informationen: {}".format(error_id),
+                    body="Leider ist ein Fehler aufgetreten. Bitte versuche es erneut.\n\n"
+                     "Sollte der Fehler weiterhin auftreten, mach bitte einen Screenshot und sprich @ismil1110 per PM an.\n\n"
+                     "Fehler-Informationen: {error_id}".format(error_id=error_id),
                     keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
                 ))
 
@@ -102,6 +119,9 @@ def incoming():
 
     return Response(status=200)
 
+@babel.localeselector
+def get_locale():
+    return 'de'
 
 def get_kik_api_cache():
     return kik_api_cache
