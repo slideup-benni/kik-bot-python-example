@@ -1,497 +1,349 @@
-import json
-import os
-import re
-import sqlite3
-import time
-from mimetypes import guess_extension
-from pathlib import Path
-
-import requests
-
-
-class CharacterPersistentClass:
-
-    STATUS_NONE = 0
-    STATUS_SET_PICTURE = 1
-    STATUS_DYN_MESSAGES = 2
-
-    def __init__(self, config):
-        self.connection = None
-        self.cursor = None
-        self.config = config
-        self.database_path = CharacterPersistentClass.get_database_path_from_config(config)
-
-        if not os.path.exists(self.database_path):
-            self.create_database()
-
-    def __del__(self):
-        if self.connection is not None:
-            self.connection.commit()
-            self.connection.close()
-
-    def connect_database(self):
-        if self.connection is None:
-            self.connection = sqlite3.connect(self.database_path)
-            self.connection.row_factory = sqlite3.Row
-            self.cursor = self.connection.cursor()
-
-    def commit(self):
-        if self.connection is not None:
-            self.connection.commit()
-
-    @staticmethod
-    def get_min_char_id():
-        return 1
-
-    @staticmethod
-    def get_database_path_from_config(config):
-        return config.get("DatabasePath", "{home}/database.db").format(home=str(Path.home()))
-
-    def get_next_fee_char_id(self, user_id):
-        self.connect_database()
-
-        self.cursor.execute((
-            "SELECT char_id "
-            "FROM characters "
-            "WHERE user_id=? "
-            "ORDER BY char_id "
-            "LIMIT 1 "
-        ), [user_id])
-
-        min_char_id = self.cursor.fetchone()
-        if min_char_id is None or int(min_char_id['char_id']) != self.get_min_char_id():
-            return self.get_min_char_id()
-
-        self.cursor.execute((
-            "SELECT char_id + 1 AS new_char_id "
-            "FROM characters ch "
-            "WHERE NOT EXISTS ( "
-            "    SELECT  NULL "
-            "    FROM    characters mi "
-            "    WHERE   mi.char_id = ch.char_id + 1 AND mi.user_id=ch.user_id"
-            ") AND ch.user_id=?"
-            "ORDER BY char_id "
-            "LIMIT 1 "
-        ), [user_id])
-
-        next_free_char_id = self.cursor.fetchone()
-        if next_free_char_id is None:
-            return self.get_min_char_id()
-        return int(next_free_char_id['new_char_id'])
-
-    def add_char(self, user_id, creator_id, text):
-        self.connect_database()
-
-        next_char_id = self.get_next_fee_char_id(user_id)
-        data = (user_id, next_char_id, text, creator_id, int(time.time()))
-        self.cursor.execute((
-            "INSERT INTO characters "
-            "(user_id, char_id, text, creator_id, created) "
-            "VALUES (?, ?, ?, ?, ?)"
-        ), data)
-        return next_char_id
-
-    def change_char(self, user_id, creator_id, text, char_id=None):
-        self.connect_database()
-
-        if char_id is None:
-            char_id = self.get_min_char_id()
-
-        if self.get_char(user_id, char_id) is None:
-            return False
+msgid ""
+msgstr ""
+"Project-Id-Version: rpcharbot\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2018-08-02 17:39+0200\n"
+"PO-Revision-Date: 2018-08-02 16:44\n"
+"Last-Translator: shugo1110 <shugo1110@gmail.com>\n"
+"Language-Team: English\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.6.0\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Generator: crowdin.com\n"
+"X-Crowdin-Project: rpcharbot\n"
+"X-Crowdin-Language: en\n"
+"X-Crowdin-File: /master/base.pot\n"
+"Language: en_US\n"
+
+#: bot.py:92
+msgid "Leider ist ein Fehler aufgetreten. Bitte versuche es erneut.\n\n"
+"Sollte der Fehler weiterhin auftreten, mach bitte einen Screenshot und sprich @ismil1110 per PM an.\n\n"
+"Fehler-Informationen: {error_id}"
+msgstr ""
+
+#: modules/message_controller.py:43
+msgid "Hi {user[first_name]}, mit mir kann man auch privat reden. Für eine Liste an Befehlen antworte einfach mit '{help_command}'."
+msgstr ""
+
+#: modules/message_controller.py:60
+msgid "Hi {user[first_name]}, ich bin der Steckbrief-Bot der Gruppe #{kik_group_id}\n"
+"Für weitere Informationen tippe auf Antwort und dann auf '{help_command}'."
+msgstr ""
+
+#: modules/message_controller.py:109 modules/message_controller.py:149
+msgid "Sorry {user[first_name]}, ich habe dich nicht verstanden."
+msgstr ""
+
+#: modules/message_controller.py:118
+msgid "Sorry {user[first_name]}, mit diesem Bild kann ich leider nichts anfangen."
+msgstr ""
+
+#: modules/message_controller.py:125
+msgid "Alles klar! Das Bild wurde gesetzt."
+msgstr ""
+
+#: modules/message_controller.py:128
+msgid "Beim hochladen ist ein Fehler aufgetreten. Bitte versuche es erneut."
+msgstr ""
+
+#: modules/message_controller.py:197
+msgid "Du bist nicht berechtigt diesen Befehl auszuführen!\n"
+"Bitte melde dich in der Gruppe #{kik_group_id} und erfrage eine Berechtigung."
+msgstr ""
+
+#: modules/message_controller.py:219
+msgid "\n\n"
+"(Weitere Charaktere des Nutzers vorhanden: {icon_left} und {icon_right} zum navigieren)"
+msgstr ""
+
+#: modules/message_controller.py:240
+#, python-format
+msgid "{char[text]}\n\n"
+"---\n"
+"Charakter von {from_user}\n"
+"Erstellt von {creator_user}\n"
+"Erstellt am {created:%d.%m.%Y %H:%M}{appendix}"
+msgstr ""
+
+#: modules/message_controller.py:392
+msgid "Alles klar! Der erste Charakter für @{user_id} wurde hinzugefügt."
+msgstr ""
+
+#: modules/message_controller.py:394
+msgid "Alles klar! Der {char_id}. Charakter für @{user_id} wurde hinzugefügt."
+msgstr ""
+
+#: modules/message_controller.py:412
+msgid "Alles klar! Dein erster Charakter wurde hinzugefügt."
+msgstr ""
+
+#: modules/message_controller.py:414
+msgid "Alles klar! Dein {char_id}. Charakter wurde hinzugefügt."
+msgstr ""
+
+#: modules/message_controller.py:416
+msgid "Alles klar! Dein Charakter wurde hinzugefügt. \n"
+"Der Charakter wurde temporär dem Alias-User @{alias_user_id} zugeordnet.\n\n"
+"Aufgrund der letzten Änderung von Kik, konnte ich dir den Charakter nicht direkt zuordnen.\n"
+"Damit der Charakter auch wirklich dir zugeordnet wird, sende bitte jetzt den folgenden Befehl (Bitte kopieren und deine Nutzer_Id ersetzen):"
+msgstr ""
+
+#: modules/message_controller.py:421
+msgid "@{user_id} @Deine_Nutzer_Id"
+msgstr ""
+
+#: modules/message_controller.py:449 modules/message_controller.py:537
+#: modules/message_controller.py:761 modules/message_controller.py:823
+#: modules/message_controller.py:891 modules/message_controller.py:945
+#: modules/message_controller.py:996 modules/message_controller.py:1053
+#: modules/message_controller.py:1112 modules/message_controller.py:1155
+#: modules/message_controller.py:1191
+msgid "Fehler beim Aufruf des Befehls. Siehe '{help_command}'."
+msgstr ""
+
+#: modules/message_controller.py:476
+msgid "Alles klar! Der {char_id}. Charakter für @{user_id} wurde gespeichert."
+msgstr ""
+
+#: modules/message_controller.py:493
+msgid "Alles klar! Dein {char_id}. Charakter wurde gespeichert."
+msgstr ""
+
+#: modules/message_controller.py:512
+msgid "Alles klar! Der erste Charakter für @{user_id} wurde gespeichert."
+msgstr ""
+
+#: modules/message_controller.py:525
+msgid "Alles klar! Dein erster Charakter wurde gespeichert."
+msgstr ""
+
+#: modules/message_controller.py:588
+msgid "Alles Klar! Bitte schicke jetzt das Bild direkt an @{bot_username}"
+msgstr ""
+
+#: modules/message_controller.py:639
+msgid "Es wurde kein Charakter mit dem Namen {char_name} des Nutzers @{user_id} gefunden"
+msgstr ""
+
+#: modules/message_controller.py:653
+msgid "Es wurden {cnt} Charaktere mit dem Namen {char_name} des Nutzers @{user_id} gefunden"
+msgstr ""
+
+#: modules/message_controller.py:664
+msgid "Keine Daten zum {char_id}. Charakter des Nutzers @{user_id} gefunden"
+msgstr ""
+
+#: modules/message_controller.py:671
+msgid "Keine Daten zum Nutzer @{user_id} gefunden"
+msgstr ""
+
+#: modules/message_controller.py:699
+msgid "Du hast erfolgreich deinen {from_char_id}. Charakter auf @{to_user_id} ({to_char_id}.) verschoben."
+msgstr ""
+
+#: modules/message_controller.py:705
+msgid "Du hast erfolgreich deinen Charakter auf @{to_user_id} ({to_char_id}.) verschoben."
+msgstr ""
+
+#: modules/message_controller.py:726
+msgid "Du hast erfolgreich den {from_char_id}. Charakter von @{from_user_id} auf @{to_user_id} ({to_char_id}.) verschoben."
+msgstr ""
+
+#: modules/message_controller.py:733
+msgid "Du hast erfolgreich den ersten Charakter von @{from_user_id} auf @{to_user_id} ({to_char_id}.) verschoben."
+msgstr ""
+
+#: modules/message_controller.py:753
+msgid "Du kannst keine Charaktere von anderen Nutzern verschieben."
+msgstr ""
+
+#: modules/message_controller.py:785
+msgid "Du hast erfolgreich deinen {char_id}. Charakter gelöscht"
+msgstr ""
+
+#: modules/message_controller.py:787
+msgid "Du hast erfolgreich deinen Charakter gelöscht."
+msgstr ""
+
+#: modules/message_controller.py:800
+msgid "Du hast erfolgreich den {char_id}. Charakter von @{user_id} gelöscht."
+msgstr ""
+
+#: modules/message_controller.py:802
+msgid "Du hast erfolgreich den ersten Charakter von @{user_id} gelöscht."
+msgstr ""
+
+#: modules/message_controller.py:815 modules/message_controller.py:883
+msgid "Du kannst keine Charaktere von anderen Nutzern löschen."
+msgstr ""
+
+#: modules/message_controller.py:847
+msgid "Du hast erfolgreich die letzte Änderung am Charakter {char_id} gelöscht."
+msgstr ""
+
+#: modules/message_controller.py:849
+msgid "Du hast erfolgreich die letzte Änderung gelöscht."
+msgstr ""
+
+#: modules/message_controller.py:865
+msgid "Du hast erfolgreich die letzte Änderung des Charakters {char_id} von @{user_id} gelöscht."
+msgstr ""
+
+#: modules/message_controller.py:867
+msgid "Du hast erfolgreich die letzte Änderung des Charakters von @{user_id} gelöscht."
+msgstr ""
+
+#: modules/message_controller.py:916
+msgid "Für die Suchanfrage wurden keine Charaktere gefunden."
+msgstr ""
+
+#: modules/message_controller.py:935
+msgid "Es wurden mehrere Charaktere gefunden, die deiner Suchanfrage entsprechen."
+msgstr ""
+
+#: modules/message_controller.py:967 modules/message_controller.py:1024
+msgid "Der Befehl '{command}' existiert nicht."
+msgstr ""
+
+#: modules/message_controller.py:982
+msgid "Du hast erfolgreich die Tastaturen für den statischen Befehl '{command}' aktualisiert.\n"
+"Du kannst auch alternative Befehle (wie z.B. 'h' für Hilfe oder 'rules' für Regeln) hinzufügen. Dies geht mit dem Befehl:\n\n"
+"@{bot_username} {set_cmd_alt_cmd_command} {command} {curr_alt_cmd}"
+msgstr ""
+
+#: modules/message_controller.py:1039
+msgid "Du hast erfolgreich die alternativen Befehle für den Befehl '{command}' aktualisiert.\n"
+"Du kannst jetzt noch mit dem folgenden Befehl die Antwort-Tastaturen setzen (Komma-getrennt):\n\n"
+"@{bot_username} {set_cmd_keyboards_command} {command} {curr_keyboards}"
+msgstr ""
+
+#: modules/message_controller.py:1062 modules/message_controller.py:1121
+msgid "Du kannst keine statischen Antworten setzen."
+msgstr ""
+
+#: modules/message_controller.py:1093
+msgid "Du hast erfolgreich die statische Antwort auf den Befehl '{command}' aktualisiert.\n"
+"Du kannst jetzt noch mit dem folgenden Befehl die Antwort-Tastaturen setzen (Komma-getrennt):\n\n"
+"@{bot_username} {set_cmd_keyboards_command} {command} {curr_keyboards}\n\n\n"
+"Du kannst auch alternative Befehle (wie z.B. 'h' für Hilfe oder 'rules' für Regeln) hinzufügen. Dies geht mit dem Befehl:\n\n"
+"@{bot_username} {set_cmd_alt_cmd_command} {command} {curr_alt_cmd}"
+msgstr ""
+
+#: modules/message_controller.py:1138
+msgid "Du hast erfolgreich den Nutzer @{user_id} berechtigt."
+msgstr ""
+
+#: modules/message_controller.py:1145
+msgid "Der Nutzer @{user_id} konnte nicht berechtigt werden.\n\n"
+"Dies kann folgende Ursachen haben:\n"
+"1. Der Nutzer ist bereits berechtigt.\n"
+"2. Du bist nicht berechtigt, diesen Nutzer zu berechtigen."
+msgstr ""
+
+#: modules/message_controller.py:1175
+msgid "Du hast erfolgreich den Nutzer @{user_id} entmächtigt."
+msgstr ""
+
+#: modules/message_controller.py:1182
+msgid "Der Nutzer @{user_id} konnte nicht entmächtigt werden.\n\n"
+"Dies kann folgende Ursachen haben:\n"
+"Du bist nicht berechtigt, diesen Nutzer zu entmächtigen."
+msgstr ""
+
+#: modules/message_controller.py:1216
+msgid "Liste aller Nutzer mit Charakteren:\n"
+"--- Seite {page} ---\n"
+msgstr ""
+
+#: modules/message_controller.py:1219
+#, python-format
+msgid "{consecutive_number}.: {user_name}\n"
+"Nutzername: @{user_id}\n"
+"Anz. Charaktere: {chars_cnt}\n"
+"letzte Änderung: {last_change:%d.%m.%Y}"
+msgstr ""
+
+#: modules/message_controller.py:1255
+msgid "\n\n"
+"(Weitere Seiten: {icon_left} und {icon_right} zum navigieren)"
+msgstr ""
+
+#: modules/message_controller.py:1279
+msgid "Die folgende Charaktervorlage kann genutzt werden um einen neuen Charakter im RPG zu erstellen.\n"
+"Dies ist eine notwendige Voraussetung um am RPG teilnehmen zu können.\n"
+"Bitte poste diese Vorlage ausgefüllt im Gruppenchannel #{kik_group_id}\n"
+"Wichtig: Bitte lasse die Schlüsselwörter (Vorname:, Nachname:, etc.) stehen.\n"
+"Möchtest du die Vorlage nicht über den Bot speichern, dann entferne bitte die erste Zeile.\n"
+"Hast du bereits einen Charakter und möchtest diesen aktualisieren, dann schreibe in der ersten Zeile '{change_command}' anstatt '{add_command}'"
+msgstr ""
+
+#: modules/message_controller.py:1317
+msgid "Weitere Beispiele\n"
+"Alle Beispiele sind in einzelnen Abschnitten mittels ----- getrennt.\n\n"
+"------\n"
+"@{bot_username} {add_command} @{user_id}\n"
+"Hier kann der Text zum Charakter stehen\n"
+"Zeilenumbrüche sind erlaubt\n"
+"In diesem Beispiel wurde der Nickname angegeben\n"
+"------\n"
+"@{bot_username} {change_command}\n"
+"Hier kann der Text zum Charakter stehen\n"
+"Die Befehle Ändern und Hinzufügen bewirken das gleiche\n"
+"Wird kein Benutzername angegeben so betrifft die Änderung bzw. das Hinzufügen einen selbst\n"
+"------\n"
+"@{bot_username} {show_command} @ismil1110\n"
+"------\n"
+"@{bot_username} {show_command}\n"
+"------\n"
+"@{bot_username} {delete_command} @{user_id}\n"
+"------\n"
+"@{bot_username} {list_command}\n"
+"------\n"
+"@{bot_username} {help_command}\n"
+"------\n"
+"@{bot_username} {dice_command} 8\n"
+"------\n"
+"@{bot_username} {dice_command} Rot, Grün, Blau, Schwarz, Weiß\n"
+"------\n"
+"Bitte beachten, dass alle Befehle an den Bot mit @{bot_username} beginnen müssen. Die Nachricht darf mit keinem Leerzeichen oder sonstigen Zeichen beginnen, da ansonsten die Nachricht nicht an den Bot weitergeleitet wird.\n"
+"Wenn du bei dieser Nachricht auf Antworten tippst, werden dir unten {number} der oben gezeigten Beispiele als Vorauswahl angeboten"
+msgstr ""
+
+#: modules/message_controller.py:1362
+msgid "Neuer Charakter"
+msgstr ""
+
+#: modules/message_controller.py:1368
+msgid "Rot, Grün, Blau, Schwarz, Weiß"
+msgstr ""
+
+#: modules/message_controller.py:1382
+msgid "Kopf"
+msgstr ""
+
+#: modules/message_controller.py:1382
+msgid "Zahl"
+msgstr ""
+
+#: modules/message_controller.py:1383
+msgid "Die Münze zeigt"
+msgstr ""
+
+#: modules/message_controller.py:1386 modules/message_controller.py:1403
+msgid "Der Würfel zeigt"
+msgstr ""
+
+#: modules/message_controller.py:1394
+msgid "Ein Würfel mit der angegebenen Augenanzahl konnte nicht gewürfelt werden. Die Anzahl der Augen muss zwischen 1 und 65535 liegen."
+msgstr ""
+
+#: modules/message_controller.py:1406
+msgid "Ich wähle"
+msgstr ""
+
+#: modules/message_controller.py:1465
+msgid "Sorry {user[first_name]}, den Befehl '{command}' kenne ich nicht."
+msgstr ""
 
-        data = (user_id, char_id, text, creator_id, int(time.time()))
-        self.cursor.execute((
-            "INSERT INTO characters "
-            "(user_id, char_id, text, creator_id, created) "
-            "VALUES (?, ?, ?, ?, ?)"
-        ), data)
-
-    def set_char_pic(self, user_id, creator_id, pic_url, char_id=None):
-        self.connect_database()
-
-        timestamp = int(time.time())
-
-        if char_id is None:
-            char_id = self.get_min_char_id()
-
-        picture_path = self.config.get("PicturePath", "{home}/pictures").format(home=str(Path.home()))
-        file_wo_ext = "{}/{}-{}-{}-{}".format(picture_path, user_id, creator_id, char_id, timestamp)
-        file_tmp = file_wo_ext + ".tmp"
-        with open(file_tmp, 'wb') as handle:
-            response = requests.get(pic_url, stream=True)
-
-            for block in response.iter_content(1024):
-                if not block:
-                    break
-
-                handle.write(block)
-
-        handle.close()
-
-        if response.status_code != 200:
-            os.remove(file_tmp)
-            return False
-
-        try:
-            ext = guess_extension(response.headers['content-type'].split()[0].rstrip(";"))
-        except KeyError:
-            ext = ".jpg"
-
-        if ext == ".jpe":
-            ext = ".jpg"
-
-        os.rename(file_tmp, file_wo_ext + ext)
-
-        data = (user_id, char_id, file_wo_ext + ext, creator_id, int(time.time()))
-        self.cursor.execute((
-            "INSERT INTO character_pictures "
-            "(user_id, char_id, picture_filename, creator_id, created) "
-            "VALUES (?, ?, ?, ?, ?)"
-        ), data)
-
-        return True
-
-    def move_char(self, from_user_id, to_user_id, from_char_id=None):
-        self.connect_database()
-
-        if from_char_id is None:
-            from_char_id = self.get_min_char_id()
-
-        to_char_id = self.get_next_fee_char_id(to_user_id)
-
-        data = (to_user_id, to_char_id, from_user_id, from_char_id)
-        self.cursor.execute((
-            "UPDATE characters "
-            "SET user_id=?, char_id=? "
-            "WHERE user_id LIKE ? AND char_id=?"
-        ), data)
-
-        return to_char_id
-
-    def remove_char(self, user_id, deletor_id, char_id=None):
-        self.connect_database()
-
-        if char_id is None:
-            char_id = self.get_min_char_id()
-
-        if self.get_char(user_id, char_id) is None:
-            return False
-
-        data = (deletor_id, int(time.time()), user_id, char_id)
-        self.cursor.execute((
-            "UPDATE characters "
-            "SET deletor_id=?, deleted=? "
-            "WHERE user_id LIKE ? AND char_id=?"
-        ), data)
-
-    def remove_last_char_change(self, user_id, deletor_id, char_id=None):
-        self.connect_database()
-
-        if char_id is None:
-            char_id = self.get_min_char_id()
-
-        if self.get_char(user_id, char_id) is None:
-            return False
-
-        data = (deletor_id, int(time.time()), user_id, char_id)
-        self.cursor.execute((
-            "UPDATE characters "
-            "SET deletor_id=?, deleted=? "
-            "WHERE id = ("
-            "    SELECT id "
-            "    FROM characters "
-            "    WHERE user_id LIKE ? AND char_id=? AND deleted IS NULL "
-            "    ORDER BY created DESC "
-            "    LIMIT 1"
-            ")"
-        ), data)
-
-    def get_first_char_id(self, user_id):
-        self.connect_database()
-
-        self.cursor.execute((
-            "SELECT MIN(char_id) AS min_char_id " 
-            "  FROM  characters " 
-            "  WHERE user_id = ? AND deleted IS NULL "
-        ), [user_id])
-
-        row = self.cursor.fetchone()
-        if row is None or row["min_char_id"] is None:
-            return None
-        return int(row["min_char_id"])
-
-    def get_char(self, user_id, char_id=None):
-        self.connect_database()
-
-        if char_id is None:
-            char_id = self.get_first_char_id(user_id)
-
-        self.cursor.execute((
-            "SELECT id, user_id, char_id, text, creator_id, created, "
-            "    (SELECT MIN(char_id) "
-            "        FROM  characters AS c1 "
-            "        WHERE c1.user_id = c.user_id AND c1.deleted IS NULL AND c1.char_id > c.char_id) AS next_char_id, "
-            "    (SELECT MAX(char_id) "
-            "        FROM  characters AS c2 "
-            "        WHERE c2.user_id = c.user_id AND c2.deleted IS NULL AND c2.char_id < c.char_id) AS prev_char_id "
-            "FROM  characters AS c "
-            "WHERE user_id LIKE ? AND char_id=? AND deleted IS NULL "
-            "ORDER BY created DESC "
-            "LIMIT 1"
-        ), [user_id, char_id])
-
-        return self.cursor.fetchone()
-
-    def get_char_pic_url(self, user_id, char_id):
-        self.connect_database()
-
-        if char_id is None:
-            char_id = self.get_first_char_id(user_id)
-
-        self.cursor.execute((
-            "SELECT picture_filename "
-            "FROM  character_pictures "
-            "WHERE user_id LIKE ? AND char_id=? AND deleted IS NULL "
-            "ORDER BY created DESC "
-            "LIMIT 1"
-        ), [user_id, char_id])
-
-        pic_data = self.cursor.fetchone()
-        if pic_data is None:
-            return None
-
-        return "{}:{}/picture/{}".format(
-            self.config.get("RemoteHostIP", "www.example.com"),
-            self.config.get("RemotePort", "8080"),
-            os.path.basename(pic_data['picture_filename'])
-        )
-
-    def get_all_user_chars(self, user_id):
-        self.connect_database()
-
-        self.cursor.execute((
-            "SELECT id, char_id, text, creator_id, MAX(created) AS created "
-            "FROM characters "
-            "WHERE user_id LIKE ? AND deleted IS NULL "
-            "GROUP BY char_id"
-        ), [user_id])
-        chars = self.cursor.fetchall()
-        return chars
-
-    def list_all_users_with_chars(self, page=1, limit=15):
-        self.connect_database()
-
-        self.cursor.execute((
-            "SELECT id, user_id, MAX(char_id) AS chars_cnt, created "
-            "FROM characters "
-            "WHERE deleted IS NULL "
-            "GROUP BY user_id "
-            "ORDER BY created DESC "
-            "LIMIT ?,? "
-        ), [(page-1)*limit, limit+1])
-        return self.cursor.fetchall()
-
-    def auth_user(self, user_id, message):
-        from modules.message_controller import MessageController
-        if self.is_auth_user(message) or \
-                MessageController.is_admin(message, self.config) is False and (self.is_unauth_user(user_id) or self.is_auth_user(message) is False):
-            return False
-
-        self.connect_database()
-
-        data = (user_id, MessageController.get_from_userid(message), int(time.time()))
-        self.cursor.execute((
-            "INSERT INTO users "
-            "(user_id, creator_id, created) "
-            "VALUES (?, ?, ?)"
-        ), data)
-        return True
-
-    def unauth_user(self, user_id, message):
-        from modules.message_controller import MessageController
-        if MessageController.is_admin(message, self.config) is False:
-            return False
-
-        self.connect_database()
-
-        data = (MessageController.get_from_userid(message), int(time.time()), user_id)
-        self.cursor.execute((
-            "UPDATE users "
-            "SET deletor_id=?, deleted=? "
-            "WHERE user_id LIKE ?"
-        ), data)
-        return True
-
-    def is_auth_user(self, message):
-        from modules.message_controller import MessageController
-        if MessageController.is_admin(message, self.config):
-            return True
-
-        self.connect_database()
-        self.cursor.execute((
-            "SELECT id "
-            "FROM  users "
-            "WHERE user_id LIKE ? AND deleted IS NULL "
-            "LIMIT 1"
-        ), [MessageController.get_from_userid(message)])
-        return self.cursor.fetchone() is not None
-
-    def is_unauth_user(self, user_id):
-        self.connect_database()
-
-        self.cursor.execute((
-            "SELECT id "
-            "FROM  users "
-            "WHERE user_id LIKE ? AND deleted IS NULL "
-            "LIMIT 1"
-        ), [user_id])
-        return self.cursor.fetchone() is None
-
-    def find_char(self, name, user_id):
-        self.connect_database()
-
-        self.cursor.execute((
-            "SELECT id, char_id, text, creator_id, MAX(created) AS created "
-            "FROM characters "
-            "WHERE user_id=? AND deleted IS NULL AND text LIKE ? "
-            "GROUP BY user_id, char_id"
-        ), [user_id, "%"+name+"%"])
-        chars_raw = self.cursor.fetchall()
-        chars = []
-
-        for char in chars_raw:
-            if re.search(r".*?name(.*?):[^a-z]*?{}[^a-z]*?".format(re.escape(name)), char['text'], re.MULTILINE+re.IGNORECASE) is not None:
-                chars.append(char)
-
-        return chars
-
-    def search_char(self, query, query_key="name"):
-        self.connect_database()
-
-        self.cursor.execute((
-            "SELECT id, user_id, char_id, text, creator_id, MAX(created) AS created "
-            "FROM characters "
-            "WHERE deleted IS NULL AND text LIKE ? "
-            "GROUP BY user_id, char_id"
-        ), ["%"+query+"%"])
-        chars_raw = self.cursor.fetchall()
-        chars = []
-
-        for char in chars_raw:
-            if re.search(r".*?{}(.*?):[^a-z]*?{}[^a-z]*?".format(re.escape(query_key), re.escape(query)), char['text'], re.MULTILINE + re.IGNORECASE) is not None:
-                chars.append(char)
-
-        return chars
-
-    def update_user_command_status(self, user_id, status, status_data=None):
-        self.connect_database()
-
-        status_obj = {
-            'status': status,
-            'data': status_data
-        }
-
-        self.cursor.execute((
-            "SELECT user_id, status "
-            "FROM user_command_status "
-            "WHERE user_id LIKE ? "
-            "LIMIT 1"
-        ), [user_id])
-
-        if self.cursor.fetchone() is None:
-            self.cursor.execute((
-                "INSERT INTO user_command_status "
-                "(user_id, status, updated) "
-                "VALUES (?, ?, ?) "
-            ), [user_id, json.dumps(status_obj), int(time.time())])
-        else:
-            self.cursor.execute((
-                "UPDATE user_command_status "
-                "SET status = ?, updated = ? "
-                "WHERE user_id LIKE ? "
-            ), [json.dumps(status_obj), int(time.time()), user_id])
-
-    def get_user_command_status(self, user_id):
-        self.connect_database()
-
-        self.cursor.execute((
-            "SELECT status "
-            "FROM user_command_status "
-            "WHERE user_id LIKE ? "
-            "LIMIT 1"
-        ), [user_id])
-
-        status_data = self.cursor.fetchone()
-        if status_data is None:
-            return None
-        else:
-            return json.loads(status_data['status'])
-
-    def set_static_message(self, command, response):
-        self.connect_database()
-
-        static_message = self.get_static_message(command)
-        if static_message is None:
-            self.cursor.execute((
-                "INSERT INTO static_messages "
-                "(command, response) "
-                "VALUES (?, ?) "
-            ), [command, response])
-        else:
-            self.cursor.execute((
-                "UPDATE static_messages "
-                "SET response = ? "
-                "WHERE command LIKE ? "
-            ), [response, command])
-
-        return self.get_static_message(command)
-
-    def set_static_message_keyboard(self, command, keyboard):
-        self.connect_database()
-
-        static_message = self.get_static_message(command)
-        if static_message is not None:
-            self.cursor.execute((
-                "UPDATE static_messages "
-                "SET response_keyboards = ? "
-                "WHERE command LIKE ? "
-            ), [json.dumps(keyboard), command])
-
-        return self.get_static_message(command)
-
-    def set_static_message_alt_commands(self, command, alt_commands):
-        self.connect_database()
-
-        static_message = self.get_static_message(command)
-        if static_message is not None:
-            self.cursor.execute((
-                "UPDATE static_messages "
-                "SET alt_commands = ? "
-                "WHERE command LIKE ? "
-            ), [json.dumps(alt_commands), command])
-
-        return self.get_static_message(command)
-
-    def get_static_message(self, command):
-        self.connect_database()
-
-        self.cursor.execute((
-            "SELECT * "
-            "FROM static_messages "
-            "WHERE command LIKE ? OR alt_commands LIKE ? "
-            "LIMIT 1"
-        ), [command, "%\""+command+"\"%"])
-
-        return self.cursor.fetchone()
-
-    def create_database(self):
-        print("Datenbank {} nicht vorhanden - Datenbank wird anglegt.".format(os.path.basename(self.database_path)))
-        connection = sqlite3.connect(self.database_path)
-        cursor = connection.cursor()
-
-        cursor.executescript(open('database.sql', 'r').read())
-
-        connection.commit()
-        connection.close()
-        print("Datenbank {} angelegt".format(os.path.basename(self.database_path)))
