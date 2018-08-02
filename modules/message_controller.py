@@ -1314,6 +1314,19 @@ def msg_cmd_roll(self, message, message_body, message_body_c, response_messages,
         thing = _("Der Würfel zeigt")
     elif message_body.split(None, 1)[1].isdigit():
         count = int(message_body.split(None, 1)[1])
+
+        if count > 65535 or count < 1:
+            response_messages.append(TextMessage(
+                to=message.from_user,
+                chat_id=message.chat_id,
+                body=_("Ein Würfel mit der angegebenen Augenanzahl konnte nicht gewürfelt werden. Die Anzahl der Augen muss zwischen 1 und 65535 liegen."),
+                keyboards=[SuggestedResponseKeyboard(responses=[
+                    TextResponse("{} 65535".format(message_body_c.split(None, 1)[0])),
+                    TextResponse("Hilfe")])
+                ]
+            ))
+            return response_messages, user_command_status, user_command_status_data
+
         possibilities = list(range(1,count+1)) if count > 0 else [1]
         thing = _("Der Würfel zeigt")
     else:
