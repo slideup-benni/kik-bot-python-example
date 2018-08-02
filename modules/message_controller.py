@@ -232,29 +232,43 @@ class MessageController:
             appendix=body_char_appendix
         )
 
-        body_split = body.split("\n")
+        messages = MessageController.split_messages(body)
+
+        for m in messages:
+            response_messages.append(TextMessage(
+                to=message.from_user,
+                chat_id=message.chat_id,
+                body=m,
+                keyboards=[SuggestedResponseKeyboard(responses=keyboard_responses)]
+            ))
+
+        return (response_messages, user_command_status, user_command_status_data)
+
+    @staticmethod
+    def split_messages(message_body, split_char="\n", max_chars=1500):
+        if split_char == "":
+            return [message_body[i:i+max_chars] for i in range(0, len(message_body), max_chars)]
+
+        body_split = message_body.split(split_char)
+        splitted_messages = []
         new_body = ""
         for b in body_split:
-            if len(new_body) + len(b) + 2 < 1500:
-                new_body += "\n" + b
+            if len(new_body) + len(b) + len(split_char) < max_chars:
+                new_body += split_char + b
+            elif len(b) + len(split_char) >= max_chars:
+                new_message_to_split = new_body + split_char + b if len(new_body) != 0 else b
+                new_split_char = "" if split_char == "\n" else "\n"
+                splitted_messages += MessageController.split_messages(new_message_to_split, split_char=new_split_char)
+                new_body = ""
+            elif len(new_body) > 0:
+                splitted_messages.append(new_body)
+                new_body = b
             else:
-                response_messages.append(TextMessage(
-                    to=message.from_user,
-                    chat_id=message.chat_id,
-                    body=new_body,
-                    keyboards=[SuggestedResponseKeyboard(responses=keyboard_responses)]
-                ))
                 new_body = b
 
-        # bodys = textwrap.wrap(body, 1500, replace_whitespace=False)
-        # for body in bodys:
-        response_messages.append(TextMessage(
-            to=message.from_user,
-            chat_id=message.chat_id,
-            body=new_body,
-            keyboards=[SuggestedResponseKeyboard(responses=keyboard_responses)]
-        ))
-        return (response_messages, user_command_status, user_command_status_data)
+        if len(new_body) > 0:
+            splitted_messages.append(new_body)
+        return splitted_messages
 
     @staticmethod
     def get_name(user_id, append_user_id=False):
@@ -1369,33 +1383,22 @@ def msg_cmd_other(self, message, message_body, message_body_c, response_messages
 
         keyboard_responses = list(map(TextResponse, keyboards))
 
-        body_split = static_message["response"].format(
+        messages = MessageController.split_messages(static_message["response"].format(
             bot_username=self.bot_username,
             user=user.__dict__,
             command=message_command,
             kik_group_id=self.config.get("KikGroup", "somegroup"),
             user_id=self.get_from_userid(message),
             message=message
-        ).split("\n")
-        new_body = ""
-        for b in body_split:
-            if len(new_body) + len(b) + 2 < 1500:
-                new_body += "\n" + b
-            else:
-                response_messages.append(TextMessage(
-                    to=message.from_user,
-                    chat_id=message.chat_id,
-                    body=new_body,
-                    keyboards=[SuggestedResponseKeyboard(responses=keyboard_responses)]
-                ))
-                new_body = b
-
-        response_messages.append(TextMessage(
-            to=message.from_user,
-            chat_id=message.chat_id,
-            body=new_body,
-            keyboards=[SuggestedResponseKeyboard(responses=keyboard_responses)]
         ))
+
+        for m in messages:
+            response_messages.append(TextMessage(
+                to=message.from_user,
+                chat_id=message.chat_id,
+                body=m,
+                keyboards=[SuggestedResponseKeyboard(responses=keyboard_responses)]
+            ))
 
     else:
         response_messages.append(TextMessage(
