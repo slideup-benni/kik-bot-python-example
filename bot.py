@@ -34,7 +34,7 @@ from flask import Flask, request, Response, send_from_directory
 from flask_babel import Babel, force_locale
 from flask_babel import gettext as _
 from kik import User, KikApi, Configuration
-from kik.messages import messages_from_json, TextMessage, SuggestedResponseKeyboard, TextResponse, Message
+from kik.messages import messages_from_json, TextMessage, SuggestedResponseKeyboard, Message
 from modules.character_persistent_class import CharacterPersistentClass
 from modules.kik_api_cache import KikApiCache
 from modules.message_controller import MessageController
@@ -82,9 +82,9 @@ def incoming():
             ))
 
             if isinstance(message, TextMessage) and len(message.body) < 100:
-                resp_keyboard = [TextResponse(message.body), TextResponse("Hilfe")]
+                resp_keyboard = [MessageController.generate_text_response(message.body), MessageController.generate_text_response("Hilfe")]
             else:
-                resp_keyboard = [TextResponse("Hilfe")]
+                resp_keyboard = [MessageController.generate_text_response("Hilfe")]
 
             response_messages += [TextMessage(
                 to=message.from_user,
@@ -114,7 +114,7 @@ def incoming():
                     body="Leider ist ein Fehler aufgetreten. Bitte versuche es erneut.\n\n"
                      "Sollte der Fehler weiterhin auftreten, mach bitte einen Screenshot und sprich @ismil1110 per PM an.\n\n"
                      "Fehler-Informationen: {error_id}".format(error_id=error_id),
-                    keyboards=[SuggestedResponseKeyboard(responses=[TextResponse("Hilfe")])]
+                    keyboards=[SuggestedResponseKeyboard(responses=[MessageController.generate_text_response("Hilfe")])]
                 ))
 
             kik_api.send_messages(error_response_messages)
