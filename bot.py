@@ -73,12 +73,13 @@ def incoming():
                 response_messages += message_controller.process_message(message, user)
         except:
             error_id = hashlib.md5((str(int(time.time())) + message.from_user).encode('utf-8')).hexdigest()
-            print("Message-Error: {error_id} ({bot_username})\n---\nTrace: {trace}\n---\nReq: {request}".format(
+            print("Message-Error: {error_id} ({bot_username})\n---\nTrace: {trace}\n---\nReq: {request}\n---\nResp: {response}".format(
                 error_id=error_id,
                 bot_username=bot_username,
                 trace=traceback.format_exc(),
-                request=json.dumps(message.__dict__))
-            )
+                request=json.dumps(message.__dict__, indent=4, sort_keys=True),
+                response=json.dumps(response_messages, default=lambda o: getattr(o, '__dict__', str(o)), indent=4, sort_keys=True)
+            ))
 
             if isinstance(message, TextMessage) and len(message.body) < 100:
                 resp_keyboard = [TextResponse(message.body), TextResponse("Hilfe")]
@@ -98,12 +99,13 @@ def incoming():
             kik_api.send_messages(response_messages)
         except:
             error_id = hashlib.md5((str(int(time.time()))).encode('utf-8')).hexdigest()
-            print("Kik-Send-Error: {error_id} ({bot_username})\n---\nTrace: {trace}\n---\nReq: {request}".format(
+            print("Kik-Send-Error: {error_id} ({bot_username})\n---\nTrace: {trace}\n---\nReq: {request}\n---\nResp: {response}".format(
                 error_id=error_id,
                 bot_username=bot_username,
                 trace=traceback.format_exc(),
-                request=json.dumps([m.__dict__ for m in messages]))
-            )
+                request=json.dumps([m.__dict__ for m in messages], indent=4, sort_keys=True),
+                response=json.dumps(response_messages, default=lambda o: getattr(o, '__dict__', str(o)), indent=4, sort_keys=True)
+            ))
             error_response_messages = []
             for resp_message in response_messages: # type: Message
                 error_response_messages.append(TextMessage(
