@@ -229,11 +229,12 @@ class MessageController:
         pic_url = character_persistent_class.get_char_pic_url(char_data["user_id"], char_data["char_id"])
 
         if pic_url is not None:
-            response_messages.append(PictureMessage(
-                to=message.from_user,
-                chat_id=message.chat_id,
-                pic_url=pic_url,
-            ))
+            body_char_appendix += _("\n\nLeider können derzeit keine Bilder angezeigt werden, da dies zum Bann des Bots führen kann.")
+        #    response_messages.append(PictureMessage(
+        #        to=message.from_user,
+        #        chat_id=message.chat_id,
+        #        pic_url=pic_url,
+        #    ))
 
         body = _("{char[text]}\n\n---\nCharakter von {from_user}\nErstellt von {creator_user}\nErstellt am {created:%d.%m.%Y %H:%M}{appendix}").format(
             char=char_data,
