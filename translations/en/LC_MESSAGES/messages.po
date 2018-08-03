@@ -3,7 +3,7 @@ msgstr ""
 "Project-Id-Version: rpcharbot\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
 "POT-Creation-Date: 2018-08-02 17:39+0200\n"
-"PO-Revision-Date: 2018-08-02 20:21\n"
+"PO-Revision-Date: 2018-08-03 11:31\n"
 "Last-Translator: shugo1110 <shugo1110@gmail.com>\n"
 "Language-Team: English\n"
 "MIME-Version: 1.0\n"
@@ -28,7 +28,7 @@ msgstr "We're sorry, but a failure occured. \n"
 
 #: modules/message_controller.py:43
 msgid "Hi {user[first_name]}, mit mir kann man auch privat reden. Für eine Liste an Befehlen antworte einfach mit '{help_command}'."
-msgstr ""
+msgstr "Hi {user[first_name]}, you can talk to me privately. For a list of commands, just answer with '{help_command} '."
 
 #: modules/message_controller.py:60
 msgid "Hi {user[first_name]}, ich bin der Steckbrief-Bot der Gruppe #{kik_group_id}\n"
