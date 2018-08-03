@@ -383,7 +383,7 @@ def msg_cmd_add(self, message, message_body, message_body_c, response_messages, 
 
         auth = self.check_auth(self.character_persistent_class, message, self.config)
         if selected_user != self.get_from_userid(message) and auth is not True:
-            return [auth]
+            return [auth], user_command_status, user_command_status_data
 
         char_id = self.character_persistent_class.add_char(message_body.split(None, 2)[1][1:].strip(), self.get_from_userid(message), message_body_c.split(None, 2)[2].strip())
 
@@ -467,7 +467,7 @@ def msg_cmd_change(self, message, message_body, message_body_c, response_message
 
         auth = self.check_auth(self.character_persistent_class, message, self.config)
         if user_id != self.get_from_userid(message) and auth is not True:
-            return [auth]
+            return [auth], user_command_status, user_command_status_data
 
         self.character_persistent_class.change_char(user_id, self.get_from_userid(message), text, char_id)
         response_messages.append(TextMessage(
@@ -503,7 +503,7 @@ def msg_cmd_change(self, message, message_body, message_body_c, response_message
 
         auth = self.check_auth(self.character_persistent_class, message, self.config)
         if user_id != self.get_from_userid(message) and auth is not True:
-            return [auth]
+            return [auth], user_command_status, user_command_status_data
 
         self.character_persistent_class.change_char(message_body.split(None, 2)[1][1:].strip(), self.get_from_userid(message), message_body_c.split(None, 2)[2].strip())
         response_messages.append(TextMessage(
@@ -557,7 +557,7 @@ def msg_cmd_set_pic(self, message, message_body, message_body_c, response_messag
 
         auth = self.check_auth(self.character_persistent_class, message, self.config)
         if user_id != self.get_from_userid(message) and auth is not True:
-            return [auth]
+            return [auth], user_command_status, user_command_status_data
 
     elif len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1].isdigit():
 
@@ -570,7 +570,7 @@ def msg_cmd_set_pic(self, message, message_body, message_body_c, response_messag
 
         auth = self.check_auth(self.character_persistent_class, message, self.config)
         if user_id != self.get_from_userid(message) and auth is not True:
-            return [auth]
+            return [auth], user_command_status, user_command_status_data
 
     else:
         user_id = self.get_from_userid(message)
@@ -910,7 +910,7 @@ def msg_cmd_search(self, message, message_body, message_body_c, response_message
 
         auth = self.check_auth(self.character_persistent_class, message, self.config)
         if auth is not True:
-            return [auth]
+            return [auth], user_command_status, user_command_status_data
 
         chars = self.character_persistent_class.search_char(query)
 
@@ -1221,7 +1221,7 @@ def msg_cmd_list(self, message, message_body, message_body_c, response_messages,
 
     auth = self.check_auth(self.character_persistent_class, message, self.config)
     if auth is not True:
-        return [auth]
+        return [auth], user_command_status, user_command_status_data
 
     limit = 15
     chars = self.character_persistent_class.list_all_users_with_chars(page)
