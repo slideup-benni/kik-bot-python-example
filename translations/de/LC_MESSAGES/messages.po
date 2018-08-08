@@ -3,7 +3,7 @@ msgstr ""
 "Project-Id-Version: rpcharbot\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
 "POT-Creation-Date: 2018-08-03 13:55+0200\n"
-"PO-Revision-Date: 2018-08-03 12:13\n"
+"PO-Revision-Date: 2018-08-08 14:22\n"
 "Last-Translator: shugo1110 <shugo1110@gmail.com>\n"
 "Language-Team: German\n"
 "MIME-Version: 1.0\n"
@@ -66,7 +66,8 @@ msgstr "\n\n"
 #: modules/message_controller.py:232
 msgid "\n\n"
 "Leider können derzeit keine Bilder angezeigt werden, da dies zum Bann des Bots führen kann."
-msgstr ""
+msgstr "\n\n"
+"Leider können derzeit keine Bilder angezeigt werden, da dies zum Bann des Bots führen kann."
 
 #: modules/message_controller.py:239
 #, python-format
