@@ -7,6 +7,7 @@ import sqlite3
 from flask_babel import gettext as _
 from kik.messages import Message, StartChattingMessage, TextMessage, SuggestedResponseKeyboard, PictureMessage
 from modules.character_persistent_class import CharacterPersistentClass
+from modules.kik_user import User, LazyKikUser, LazyRandomKikUser
 
 
 class MessageController:
@@ -24,7 +25,7 @@ class MessageController:
         config.read(config_file)
         return config['DEFAULT']
 
-    def process_message(self, message: Message, user):
+    def process_message(self, message: Message, user: User):
 
         log_requests = self.config.get("LogRequests", "False")
         if log_requests is True or str(log_requests).lower() == "true":
@@ -40,7 +41,7 @@ class MessageController:
                 to=message.from_user,
                 chat_id=message.chat_id,
                 body=_("Hi {user[first_name]}, mit mir kann man auch privat reden. Für eine Liste an Befehlen antworte einfach mit '{help_command}'.").format(
-                    user=user.__dict__,
+                    user=user,
                     help_command=MessageController.get_command_text('Hilfe', 'de')
                 ),
                 # keyboards are a great way to provide a menu of options for a user to respond with!
@@ -59,7 +60,7 @@ class MessageController:
                     body=_("Hi {user[first_name]}, ich bin der Steckbrief-Bot der Gruppe #{kik_group_id}\n" +
                            "Für weitere Informationen tippe auf Antwort und dann auf '{help_command}'."
                            ).format(
-                        user=user.__dict__,
+                        user=user,
                         kik_group_id=self.config.get("KikGroup", "somegroup"),
                         help_command=MessageController.get_command_text('Hilfe', 'de')
                     ),
@@ -105,7 +106,7 @@ class MessageController:
                 response_messages.append(TextMessage(
                     to=message.from_user,
                     chat_id=message.chat_id,
-                    body=_("Sorry {user[first_name]}, ich habe dich nicht verstanden.").format(user=user.__dict__),
+                    body=_("Sorry {user[first_name]}, ich habe dich nicht verstanden.").format(user=user),
                     keyboards=[SuggestedResponseKeyboard(responses=[MessageController.generate_text_response("Hilfe")])]
                 ))
         elif isinstance(message, PictureMessage):
@@ -114,7 +115,7 @@ class MessageController:
                 response_messages.append(TextMessage(
                     to=message.from_user,
                     chat_id=message.chat_id,
-                    body=_("Sorry {user[first_name]}, mit diesem Bild kann ich leider nichts anfangen.").format(user=user.__dict__),
+                    body=_("Sorry {user[first_name]}, mit diesem Bild kann ich leider nichts anfangen.").format(user=user),
                     keyboards=[SuggestedResponseKeyboard(responses=[MessageController.generate_text_response("Hilfe")])]
                 ))
 
@@ -145,7 +146,7 @@ class MessageController:
             response_messages.append(TextMessage(
                 to=message.from_user,
                 chat_id=message.chat_id,
-                body=_("Sorry {user[first_name]}, ich habe dich nicht verstanden.").format(user=user.__dict__),
+                body=_("Sorry {user[first_name]}, ich habe dich nicht verstanden.").format(user=user),
                 keyboards=[SuggestedResponseKeyboard(responses=[MessageController.generate_text_response("Hilfe")])]
             ))
 
@@ -199,7 +200,7 @@ class MessageController:
         return True
 
     @staticmethod
-    def create_char_messages(character_persistent_class, char_data: sqlite3.Row, message, user_command_status, user_command_status_data):
+    def create_char_messages(character_persistent_class, char_data: sqlite3.Row, message, user_command_status, user_command_status_data, user: User):
         response_messages = []
         keyboard_responses = []
         body_char_appendix = ""
@@ -236,12 +237,14 @@ class MessageController:
         #        pic_url=pic_url,
         #    ))
 
-        body = _("{char[text]}\n\n---\nCharakter von {from_user}\nErstellt von {creator_user}\nErstellt am {created:%d.%m.%Y %H:%M}{appendix}").format(
-            char=char_data,
+        body = _("{char_text}\n\n---\nCharakter von {from_user}\nErstellt von {creator_user}\nErstellt am {created:%d.%m.%Y %H:%M}{appendix}").format(
+            char_text=str(char_data["text"]).format(
+                user=user
+            ),
             from_user=MessageController.get_name(char_data["user_id"], append_user_id=True),
             creator_user=MessageController.get_name(char_data['creator_id'], append_user_id=True),
             created=datetime.datetime.fromtimestamp(char_data['created']),
-            appendix=body_char_appendix
+            appendix=body_char_appendix,
         )
 
         messages = MessageController.split_messages(body)
@@ -284,16 +287,11 @@ class MessageController:
 
     @staticmethod
     def get_name(user_id, append_user_id=False):
-        from bot import get_kik_api_cache
-        kik_api_cache = get_kik_api_cache()
-
-        user = kik_api_cache.get_user(user_id)
-        if user is not None and append_user_id is True:
-            return user.first_name + " " + user.last_name + " (@{})".format(user_id)
-        elif user is not None:
-            return user.first_name + " " + user.last_name
+        user = LazyKikUser.init(user_id)
+        if append_user_id is True:
+            return user["name_and_id"]
         else:
-            return "@" + user_id
+            return user["name_or_id"]
 
     @staticmethod
     def is_aliased(message):
@@ -377,7 +375,7 @@ class MessageController:
 # Befehl hinzufügen
 #
 @MessageController.add_method({"de": "Hinzufügen", "en": "add"})
-def msg_cmd_add(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user):
+def msg_cmd_add(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User):
     if len(message_body.split(None, 2)) == 3 and message_body.split(None, 2)[1][0] == "@" and message_body.split(None, 2)[2].strip() != "":
         selected_user = message_body.split(None, 2)[1][1:]
 
@@ -457,7 +455,7 @@ def msg_cmd_add(self, message, message_body, message_body_c, response_messages, 
 # Befehl ändern
 #
 @MessageController.add_method({"de": "Ändern", "en": "change"})
-def msg_cmd_change(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user):
+def msg_cmd_change(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User):
     if len(message_body.split(None, 3)) == 4 and message_body.split(None, 3)[1][0] == "@" \
             and message_body.split(None, 3)[2].isdigit() and message_body.split(None, 3)[3].strip() != "":
 
@@ -546,7 +544,7 @@ def msg_cmd_change(self, message, message_body, message_body_c, response_message
 # Befehl Bild setzen
 #
 @MessageController.add_method({"de": "Bild-setzen", "en": "set-picture", "_alts": ["set-pic", "Setze-Bild"]})
-def msg_cmd_set_pic(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user):
+def msg_cmd_set_pic(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User):
     response = None
 
     if len(message_body.split(None, 2)) == 3 and message_body.split(None, 2)[1][0] == "@" \
@@ -594,7 +592,7 @@ def msg_cmd_set_pic(self, message, message_body, message_body_c, response_messag
 # Befehl Anzeigen
 #
 @MessageController.add_method({"de": "Anzeigen", "en": "show", "_alts": ["Steckbrief", "Stecki"]})
-def msg_cmd_show(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user):
+def msg_cmd_show(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User):
     char_data = None
     chars = None
     char_name = None
@@ -674,7 +672,7 @@ def msg_cmd_show(self, message, message_body, message_body_c, response_messages,
         ))
     else:
         (char_resp_msg, user_command_status, user_command_status_data) = self.create_char_messages(self.character_persistent_class,
-                                                                                                   char_data, message, user_command_status, user_command_status_data)
+                                                                                                   char_data, message, user_command_status, user_command_status_data, user)
         response_messages += char_resp_msg
     return response_messages, user_command_status, user_command_status_data
 
@@ -683,7 +681,7 @@ def msg_cmd_show(self, message, message_body, message_body_c, response_messages,
 # Befehl Verschieben
 #
 @MessageController.add_method({"de": "Verschieben", "en": "move"})
-def msg_cmd_move(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user):
+def msg_cmd_move(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User):
     if len(message_body.split(None, 2)) == 3 and message_body.split(None, 2)[1][0] == "@" and message_body.split(None, 2)[2][0] == "@":
         if len(message_body.split(None, 3)) == 4 and message_body.split(None, 3)[3].isdigit():
             char_id = int(message_body.split(None, 3)[3])
@@ -772,7 +770,7 @@ def msg_cmd_move(self, message, message_body, message_body_c, response_messages,
 # Befehl Löschen
 #
 @MessageController.add_method({"de": "Löschen", "en": "delete", "_alts": ["del"]})
-def msg_cmd_delete(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user):
+def msg_cmd_delete(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User):
     if len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1][0] == "@":
         if len(message_body.split(None, 2)) == 3 and message_body.split(None, 2)[2].isdigit():
             char_id = int(message_body.split(None, 2)[2])
@@ -835,7 +833,7 @@ def msg_cmd_delete(self, message, message_body, message_body_c, response_message
 # Befehl Löschen (letzte)
 #
 @MessageController.add_method({"de": "Letzte-Löschen", "en": "delete-last", "_alts": ["del-last"]})
-def msg_cmd_delete_last(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user):
+def msg_cmd_delete_last(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User):
     if len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1][0] == "@":
         if len(message_body.split(None, 2)) == 3 and message_body.split(None, 2)[2].isdigit():
             char_id = int(message_body.split(None, 2)[2])
@@ -904,7 +902,7 @@ def msg_cmd_delete_last(self, message, message_body, message_body_c, response_me
 # Befehl Suche
 #
 @MessageController.add_method({"de": "Suche", "en": "search"})
-def msg_cmd_search(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user):
+def msg_cmd_search(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User):
     if len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1].strip() != "":
         query = message_body.split(None, 1)[1].strip()
 
@@ -924,7 +922,7 @@ def msg_cmd_search(self, message, message_body, message_body_c, response_message
 
         elif len(chars) == 1:
             (char_resp_msg, user_command_status, user_command_status_data) = self.create_char_messages(self.character_persistent_class,
-                                                                                                       chars[0], message, user_command_status, user_command_status_data)
+                                                                                                       chars[0], message, user_command_status, user_command_status_data, user)
             response_messages += char_resp_msg
 
         else:
@@ -959,7 +957,7 @@ def msg_cmd_search(self, message, message_body, message_body_c, response_message
 # Befehl Setze Befehl Tastaturen
 #
 @MessageController.add_method({"de": "Setze-Befehl-Tastaturen", "en": "set-command-keyboards", "_alts": ["set-cmd-keyboards"]})
-def msg_cmd_set_cmd_keyboards(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user):
+def msg_cmd_set_cmd_keyboards(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User):
     if self.is_admin(message, self.config):
         if len(message_body.split(None, 2)) == 3:
             keyboards = message_body_c.split(None, 2)[2].strip()
@@ -1018,7 +1016,7 @@ def msg_cmd_set_cmd_keyboards(self, message, message_body, message_body_c, respo
 # Befehl Setze Befehl Alternative Befehle
 #
 @MessageController.add_method({"de": "Setze-Befehl-alternative-Befehle", "en": "set-command-alternative-commands", "_alts": ["set-cmd-alt-cmd"]})
-def msg_cmd_set_cmd_alt_cmd(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user):
+def msg_cmd_set_cmd_alt_cmd(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User):
     if self.is_admin(message, self.config):
         if len(message_body.split(None, 2)) == 3:
             alt_commands = message_body_c.split(None, 2)[2].strip()
@@ -1077,7 +1075,7 @@ def msg_cmd_set_cmd_alt_cmd(self, message, message_body, message_body_c, respons
 # Befehl Setze Antwort
 #
 @MessageController.add_method({"de": "Setze-Befehl", "en": "set-command", "_alts": ["set-cmd"]})
-def msg_cmd_set_command(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user):
+def msg_cmd_set_command(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User):
     if self.is_admin(message, self.config):
         if len(message_body.split(None, 2)) == 3:
             text = message_body_c.split(None, 2)[2].strip()
@@ -1138,7 +1136,7 @@ def msg_cmd_set_command(self, message, message_body, message_body_c, response_me
 # Befehl Auth
 #
 @MessageController.add_method({"de": "Berechtigen", "en": "auth", "_alts": ["authorize", "authorise"]})
-def msg_cmd_auth(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user):
+def msg_cmd_auth(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User):
     if len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1][0] == "@":
         selected_user = message_body.split(None, 1)[1][1:].strip()
         result = self.character_persistent_class.auth_user(selected_user, message)
@@ -1176,7 +1174,7 @@ def msg_cmd_auth(self, message, message_body, message_body_c, response_messages,
 # Befehl UnAuth
 #
 @MessageController.add_method({"de": "Entmachten", "en": "unauth", "_alts": ["unauthorize", "unauthorise"]})
-def msg_cmd_unauth(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user):
+def msg_cmd_unauth(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User):
     if len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1][0] == "@":
         selected_user = message_body.split(None, 1)[1][1:].strip()
         result = self.character_persistent_class.unauth_user(selected_user, self.get_from_userid(message))
@@ -1213,7 +1211,7 @@ def msg_cmd_unauth(self, message, message_body, message_body_c, response_message
 # Befehl Liste
 #
 @MessageController.add_method({"de": "Liste", "en": "list"})
-def msg_cmd_list(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user):
+def msg_cmd_list(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User):
     if len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1].isdigit():
         page = int(message_body.split(None, 1)[1])
     else:
@@ -1286,7 +1284,7 @@ def msg_cmd_list(self, message, message_body, message_body_c, response_messages,
 # Befehl Vorlage
 #
 @MessageController.add_method({"de": "Vorlage", "en": "template", "_alts": ["Charaktervorlage", "boilerplate", "draft", "Steckbriefvorlage", "Stecki"]})
-def msg_cmd_template(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user):
+def msg_cmd_template(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User):
     response_messages.append(TextMessage(
         to=message.from_user,
         chat_id=message.chat_id,
@@ -1325,7 +1323,7 @@ def msg_cmd_template(self, message, message_body, message_body_c, response_messa
 # Befehl Weitere Beispiele
 #
 @MessageController.add_method({"de": "Weitere-Beispiele", "en": "more-examples"})
-def msg_cmd_more_examples(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user):
+def msg_cmd_more_examples(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User):
     response_messages.append(TextMessage(
         to=message.from_user,
         chat_id=message.chat_id,
@@ -1391,7 +1389,7 @@ def msg_cmd_more_examples(self, message, message_body, message_body_c, response_
 #
 @MessageController.add_method({"de": "Würfeln", "en": "dice", "_alts": ["Würfel", u"\U0001F3B2"]})
 @MessageController.add_method({"de": "Münze", "en": "coin"})
-def msg_cmd_roll(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user):
+def msg_cmd_roll(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User):
     message_command = message_body.split(None, 1)[0]
 
     if message_command in ["münze", "coin"]:
@@ -1445,7 +1443,7 @@ def msg_cmd_roll(self, message, message_body, message_body_c, response_messages,
 @MessageController.add_method({"de": "Admin-Hilfe", "en": "admin-help"})
 @MessageController.add_method({"de": "Quellcode", "en": "sourcecode", "_alts": ["source", "lizenz", "licence"]})
 @MessageController.add_method(None)
-def msg_cmd_other(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user):
+def msg_cmd_other(self, message: TextMessage, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User):
     message_command = message_body.split(None, 1)[0]
     static_message = self.character_persistent_class.get_static_message(message_command)
 
@@ -1459,11 +1457,12 @@ def msg_cmd_other(self, message, message_body, message_body_c, response_messages
 
         messages = MessageController.split_messages(static_message["response"].format(
             bot_username=self.bot_username,
-            user=user.__dict__,
+            user=user,
             command=message_command,
             kik_group_id=self.config.get("KikGroup", "somegroup"),
             user_id=self.get_from_userid(message),
-            message=message
+            message=message,
+            ruser=LazyRandomKikUser(message.participants, message.from_user)
         ))
 
         for m in messages:
@@ -1478,7 +1477,7 @@ def msg_cmd_other(self, message, message_body, message_body_c, response_messages
         response_messages.append(TextMessage(
             to=message.from_user,
             chat_id=message.chat_id,
-            body=_("Sorry {user[first_name]}, den Befehl '{command}' kenne ich nicht.").format(user=user.__dict__, command=message_command),
+            body=_("Sorry {user[first_name]}, den Befehl '{command}' kenne ich nicht.").format(user=user, command=message_command),
             keyboards=[SuggestedResponseKeyboard(responses=[MessageController.generate_text_response("Hilfe")])]
         ))
     return response_messages, user_command_status, user_command_status_data

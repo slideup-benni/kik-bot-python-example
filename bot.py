@@ -33,10 +33,10 @@ from pathlib import Path
 from flask import Flask, request, Response, send_from_directory
 from flask_babel import Babel, force_locale
 from flask_babel import gettext as _
-from kik import User, KikApi, Configuration
+from kik import KikApi, Configuration
 from kik.messages import messages_from_json, TextMessage, SuggestedResponseKeyboard, Message
 from modules.character_persistent_class import CharacterPersistentClass
-from modules.kik_api_cache import KikApiCache
+from modules.kik_user import LazyKikUser
 from modules.message_controller import MessageController
 
 app = Flask(__name__)
@@ -68,7 +68,7 @@ def incoming():
 
     for message in messages:
         try:
-            user = kik_api.get_user(message.from_user) # type: User
+            user = LazyKikUser.init(message.from_user) # type: LazyKikUser
             with force_locale("de"):
                 response_messages += message_controller.process_message(message, user)
         except:
@@ -125,9 +125,6 @@ def incoming():
 def get_locale():
     return 'de'
 
-def get_kik_api_cache():
-    return kik_api_cache
-
 
 config_file = os.environ.get('RPCHARBOT_CONF', 'config.ini')
 print("Using conf {}.".format(config_file))
@@ -143,7 +140,7 @@ db_class = CharacterPersistentClass(default_config)
 del db_class
 
 kik_api = KikApi(bot_username, default_config.get("BotAuthCode", "abcdef01-2345-6789-abcd-ef0123456789"))
-kik_api_cache = KikApiCache(kik_api)
+LazyKikUser.kik_api = kik_api
 # For simplicity, we're going to set_configuration on startup. However, this really only needs to happen once
 # or if the configuration changes. In a production setting, you would only issue this call if you need to change
 # the configuration, and not every time the bot starts.
