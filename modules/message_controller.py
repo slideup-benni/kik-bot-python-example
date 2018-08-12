@@ -2,6 +2,7 @@ import configparser
 import datetime
 import json
 import random
+import re
 import sqlite3
 
 from flask_babel import gettext as _
@@ -1391,33 +1392,96 @@ def msg_cmd_more_examples(self, message, message_body, message_body_c, response_
 @MessageController.add_method({"de": "Münze", "en": "coin"})
 def msg_cmd_roll(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User):
     message_command = message_body.split(None, 1)[0]
+    body = ""
 
     if message_command in ["münze", "coin"]:
         possibilities = [_("Kopf"), _("Zahl")]
+        result = possibilities[random.randint(0, len(possibilities) - 1)]
         thing = _("Die Münze zeigt")
+        body = "{}: {}".format(thing, result)
     elif len(message_body.split(None, 1)) == 1 or message_body.split(None, 1)[1].strip() == "":
-        possibilities = list(range(1, 7))
+        result = str(random.randint(1, 6))
         thing = _("Der Würfel zeigt")
+        body = "{}: {}".format(thing, result)
     elif message_body.split(None, 1)[1].isdigit():
         count = int(message_body.split(None, 1)[1])
+        result = str(random.randint(1, count))
+        thing = _("Der Würfel zeigt")
+        body = "{}: {}".format(thing, result)
+    elif re.search(r"^(([0-9]+\s*([×x\*]\s*)?)?D\s*)?[0-9]+(\s*\+\s*(([0-9]+\s*([×x\*]\s*)?)?D\s*)?[0-9]+)*$", message_body.split(None, 1)[1],
+                   re.MULTILINE + re.IGNORECASE) is not None:
+        dices = str(message_body_c.split(None, 1)[1]).split("+")
+        results = list()
+        result_int = 0
+        for dice in dices:
+            match = re.search(r"^((([0-9]+)\s*([×x\*]\s*)?)?D\s*)?([0-9]+)$", dice.strip(), re.MULTILINE + re.IGNORECASE)
+            if match.group(1) is None:
+                res = int(match.group(5))
+                result_int += res
+                text = str(res)
+                results.append(text)
+            elif match.group(3) is None or int(match.group(3)) <= 1:
+                res = random.randint(1, int(match.group(5)))
+                result_int += res
+                text = "D{}: {}".format(int(match.group(5)), res)
+                results.append(text)
+            else:
+                res_text = ""
 
-        if count > 65535 or count < 1:
+                if int(match.group(3)) <= 20:
+                    loops = int(match.group(3))
+                    while loops >= 0:
+                        res = random.randint(1, int(match.group(5)))
+                        result_int += res
+                        if res_text != "":
+                            res_text += ", "
+                        res_text += str(res)
+                        loops -= 1
+                else:
+                    dice_results = [0] * int(match.group(3))
+                    loops = int(match.group(3))
+                    while loops >= 0:
+                        res = random.randint(1, int(match.group(5)))
+                        result_int += res
+                        dice_results[res-1] += 1
+                        loops -= 1
+
+                    e = 0
+                    while e < int(match.group(3)):
+                        e += 1
+                        if dice_results[e-1] == 0:
+                            continue
+
+                        if res_text != "":
+                            res_text += ", "
+
+                        res_text += "{}×{}".format(dice_results[e-1],e)
+
+                text = "{}×D{}: ({})".format(int(match.group(3)), int(match.group(5)), res_text)
+                results.append(text)
+
+            if len(results) >= 4:
+                body = "{}:\n\n{}\n".format(_("Die Würfel zeigen"), " + \n".join(results))
+            else:
+                body = "{}: {}".format(_("Die Würfel zeigen"), " + ".join(results))
+            body += "\n{}: {}".format(_("Ergebnis"), str(result_int))
+    else:
+        possibilities = [x.strip() for x in message_body_c.split(None, 1)[1].split(',')]
+
+        if len(possibilities) == 1:
             response_messages.append(TextMessage(
                 to=message.from_user,
                 chat_id=message.chat_id,
-                body=_("Ein Würfel mit der angegebenen Augenanzahl konnte nicht gewürfelt werden. Die Anzahl der Augen muss zwischen 1 und 65535 liegen."),
-                keyboards=[SuggestedResponseKeyboard(responses=[
-                    MessageController.generate_text_response("{} 65535".format(message_body_c.split(None, 1)[0])),
-                    MessageController.generate_text_response("Hilfe")])
-                ]
+                body=_("Fehler beim Aufruf des Befehls. Siehe '{help_command}'.").format(
+                    help_command=MessageController.get_command_text('Hilfe', 'de')
+                ),
+                keyboards=[SuggestedResponseKeyboard(responses=[MessageController.generate_text_response("Hilfe")])]
             ))
             return response_messages, user_command_status, user_command_status_data
 
-        possibilities = list(range(1, count + 1)) if count > 0 else [1]
-        thing = _("Der Würfel zeigt")
-    else:
-        possibilities = [x.strip() for x in message_body_c.split(None, 1)[1].split(',')]
+        result = possibilities[random.randint(0, len(possibilities) - 1)]
         thing = _("Ich wähle")
+        body = "{}: {}".format(thing, result)
 
     user_command_status = CharacterPersistentClass.STATUS_DYN_MESSAGES
     user_command_status_data = {
@@ -1427,7 +1491,7 @@ def msg_cmd_roll(self, message, message_body, message_body_c, response_messages,
     response_messages.append(TextMessage(
         to=message.from_user,
         chat_id=message.chat_id,
-        body="{}: {}".format(thing, possibilities[random.randint(0, len(possibilities) - 1)]),
+        body=body,
         keyboards=[SuggestedResponseKeyboard(responses=[MessageController.generate_text_response(u"\U0001F504"), MessageController.generate_text_response("Hilfe")])]
     ))
     return response_messages, user_command_status, user_command_status_data
