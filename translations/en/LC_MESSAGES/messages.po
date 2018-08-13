@@ -3,7 +3,7 @@ msgstr ""
 "Project-Id-Version: rpcharbot\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
 "POT-Creation-Date: 2018-08-13 09:44+0200\n"
-"PO-Revision-Date: 2018-08-13 09:03\n"
+"PO-Revision-Date: 2018-08-13 09:12\n"
 "Last-Translator: shugo1110 <shugo1110@gmail.com>\n"
 "Language-Team: English\n"
 "MIME-Version: 1.0\n"
@@ -45,7 +45,7 @@ msgstr ""
 
 #: modules/message_controller.py:128
 msgid "Alles klar! Das Bild wurde gesetzt."
-msgstr ""
+msgstr "All right! The image was set."
 
 #: modules/message_controller.py:131
 msgid "Beim hochladen ist ein Fehler aufgetreten. Bitte versuche es erneut."
@@ -75,34 +75,41 @@ msgid "{char_text}\n\n"
 "Charakter von {from_user}\n"
 "Erstellt von {creator_user}\n"
 "Erstellt am {created:%d.%m.%Y %H:%M}{appendix}"
-msgstr ""
+msgstr "{char_text}\n\n"
+"---\n"
+"character from {from_user}\n"
+"created by {creator_user}\n"
+"created on {created:%d.%m.%Y %H:%M}{appendix}"
 
 #: modules/message_controller.py:392
 msgid "Alles klar! Der erste Charakter für @{user_id} wurde hinzugefügt."
-msgstr ""
+msgstr "All right! The first character of @{user_id} was added."
 
 #: modules/message_controller.py:394
 msgid "Alles klar! Der {char_id}. Charakter für @{user_id} wurde hinzugefügt."
-msgstr ""
+msgstr "All right! The {char_id}. character of @{user_id} was added."
 
 #: modules/message_controller.py:412
 msgid "Alles klar! Dein erster Charakter wurde hinzugefügt."
-msgstr ""
+msgstr "All right! Your first character was added."
 
 #: modules/message_controller.py:414
 msgid "Alles klar! Dein {char_id}. Charakter wurde hinzugefügt."
-msgstr ""
+msgstr "All right! Your {char_id}. character was added."
 
 #: modules/message_controller.py:416
 msgid "Alles klar! Dein Charakter wurde hinzugefügt. \n"
 "Der Charakter wurde temporär dem Alias-User @{alias_user_id} zugeordnet.\n\n"
 "Aufgrund der letzten Änderung von Kik, konnte ich dir den Charakter nicht direkt zuordnen.\n"
 "Damit der Charakter auch wirklich dir zugeordnet wird, sende bitte jetzt den folgenden Befehl (Bitte kopieren und deine Nutzer_Id ersetzen):"
-msgstr ""
+msgstr "All right! Your character was added. \n"
+"The character was temporarily assigned to the alias user @{alias_user_id} .\n\n"
+"Due to the recent change of Kik, I could not directly associate the character to you.\n"
+"So that the character actually is associated with you, just send the following command now (please copy and replace your_user_id):"
 
 #: modules/message_controller.py:421
 msgid "@{user_id} @Deine_Nutzer_Id"
-msgstr ""
+msgstr "@{user_id} @your_user_id"
 
 #: modules/message_controller.py:449 modules/message_controller.py:538
 #: modules/message_controller.py:764 modules/message_controller.py:827
@@ -115,15 +122,15 @@ msgstr ""
 
 #: modules/message_controller.py:477
 msgid "Alles klar! Der {char_id}. Charakter für @{user_id} wurde gespeichert."
-msgstr ""
+msgstr "All right! The {char_id}. character of @{user_id} was saved."
 
 #: modules/message_controller.py:494
 msgid "Alles klar! Dein {char_id}. Charakter wurde gespeichert."
-msgstr ""
+msgstr "All right! Your {char_id}. character was saved."
 
 #: modules/message_controller.py:513
 msgid "Alles klar! Der erste Charakter für @{user_id} wurde gespeichert."
-msgstr ""
+msgstr "All right! The first character of @{user_id} was saved."
 
 #: modules/message_controller.py:526
 msgid "Alles klar! Dein erster Charakter wurde gespeichert."
