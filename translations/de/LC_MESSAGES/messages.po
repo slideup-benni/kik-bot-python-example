@@ -3,7 +3,7 @@ msgstr ""
 "Project-Id-Version: rpcharbot\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
 "POT-Creation-Date: 2018-08-13 09:44+0200\n"
-"PO-Revision-Date: 2018-08-13 07:52\n"
+"PO-Revision-Date: 2018-08-13 09:12\n"
 "Last-Translator: shugo1110 <shugo1110@gmail.com>\n"
 "Language-Team: German\n"
 "MIME-Version: 1.0\n"
@@ -76,7 +76,11 @@ msgid "{char_text}\n\n"
 "Charakter von {from_user}\n"
 "Erstellt von {creator_user}\n"
 "Erstellt am {created:%d.%m.%Y %H:%M}{appendix}"
-msgstr ""
+msgstr "{char_text}\n\n"
+"---\n"
+"Charakter von {from_user}\n"
+"Erstellt von {creator_user}\n"
+"Erstellt am {created:%d.%m.%Y %H:%M}{appendix}"
 
 #: modules/message_controller.py:392
 msgid "Alles klar! Der erste Charakter für @{user_id} wurde hinzugefügt."
@@ -402,11 +406,11 @@ msgstr "Der Würfel zeigt"
 
 #: modules/message_controller.py:1466 modules/message_controller.py:1468
 msgid "Die Würfel zeigen"
-msgstr ""
+msgstr "Die Würfel zeigen"
 
 #: modules/message_controller.py:1469
 msgid "Ergebnis"
-msgstr ""
+msgstr "Ergebnis"
 
 #: modules/message_controller.py:1485
 msgid "Ich wähle"
