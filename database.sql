@@ -15,6 +15,7 @@ CREATE TABLE character_pictures (
     picture_filename TEXT NOT NULL,
     creator_id TEXT NOT NULL,
     created INTEGER NOT NULL,
+    active int DEFAULT 0 NOT NULL,
     deletor_id TEXT,
     deleted INTEGER
 );

@@ -90,8 +90,11 @@ def incoming():
                 to=message.from_user,
                 chat_id=message.chat_id,
                 body=_("Leider ist ein Fehler aufgetreten. Bitte versuche es erneut.\n\n" +
-                     "Sollte der Fehler weiterhin auftreten, mach bitte einen Screenshot und sprich @ismil1110 per PM an.\n\n" +
-                     "Fehler-Informationen: {error_id}").format(error_id=error_id),
+                     "Sollte der Fehler weiterhin auftreten, mach bitte einen Screenshot und sprich @{admin_user} per PM an.\n\n" +
+                     "Fehler-Informationen: {error_id}").format(
+                    error_id=error_id,
+                    admin_user=message_controller.get_config().get("Admins", "admin1").split(',')[0].strip()
+                ),
                 keyboards=[SuggestedResponseKeyboard(responses=resp_keyboard)]
             )]
 
@@ -112,8 +115,11 @@ def incoming():
                     to=resp_message.to,
                     chat_id=resp_message.chat_id,
                     body="Leider ist ein Fehler aufgetreten. Bitte versuche es erneut.\n\n"
-                     "Sollte der Fehler weiterhin auftreten, mach bitte einen Screenshot und sprich @ismil1110 per PM an.\n\n"
-                     "Fehler-Informationen: {error_id}".format(error_id=error_id),
+                     "Sollte der Fehler weiterhin auftreten, mach bitte einen Screenshot und sprich @{admin_user} per PM an.\n\n"
+                     "Fehler-Informationen: {error_id}".format(
+                        error_id=error_id,
+                        admin_user=message_controller.get_config().get("Admins", "admin1").split(',')[0].strip()
+                    ),
                     keyboards=[SuggestedResponseKeyboard(responses=[MessageController.generate_text_response("Hilfe")])]
                 ))
 

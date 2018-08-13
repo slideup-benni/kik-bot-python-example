@@ -95,23 +95,24 @@ class LazyRandomKikUser:
 
     accepted_attrs = ["rand", "rand_wo_sender"]
 
-    def __init__(self, user_ids, sender_user_id):
+    def __init__(self, user_ids, sender_user_id, alt_user):
         self.user_ids = user_ids
         self.sender_user_id = sender_user_id
+        self.alt_user = alt_user
 
     def __getitem__(self, item):
         return self.__getattr__(item)
 
     def __getattr__(self, item):
         if item not in LazyRandomKikUser.accepted_attrs:
-            return LazyKikUser.init("ismil1110")
+            return LazyKikUser.init(self.alt_user)
 
         user_ids = self.user_ids
         if item == "rand_wo_sender":
             user_ids = list(filter(lambda x: x != self.sender_user_id, user_ids))
 
         if len(user_ids) == 0:
-            return LazyKikUser.init("ismil1110")
+            return LazyKikUser.init(self.alt_user)
 
         random_index = randrange(0, len(self.user_ids))
         return LazyKikUser.init(self.user_ids[random_index])

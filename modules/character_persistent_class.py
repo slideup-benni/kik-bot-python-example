@@ -250,7 +250,7 @@ class CharacterPersistentClass:
             char_id = self.get_first_char_id(user_id)
 
         self.cursor.execute((
-            "SELECT picture_filename "
+            "SELECT picture_filename, active "
             "FROM  character_pictures "
             "WHERE user_id LIKE ? AND char_id=? AND deleted IS NULL "
             "ORDER BY created DESC "
@@ -260,6 +260,9 @@ class CharacterPersistentClass:
         pic_data = self.cursor.fetchone()
         if pic_data is None:
             return None
+
+        if pic_data['active'] == 0:
+            return False
 
         return "{}:{}/picture/{}".format(
             self.config.get("RemoteHostIP", "www.example.com"),

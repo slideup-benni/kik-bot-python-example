@@ -26,6 +26,9 @@ class MessageController:
         config.read(config_file)
         return config['DEFAULT']
 
+    def get_config(self):
+        return self.config
+
     def process_message(self, message: Message, user: User):
 
         log_requests = self.config.get("LogRequests", "False")
@@ -41,9 +44,12 @@ class MessageController:
             response_messages.append(TextMessage(
                 to=message.from_user,
                 chat_id=message.chat_id,
-                body=_("Hi {user[first_name]}, mit mir kann man auch privat reden. Für eine Liste an Befehlen antworte einfach mit '{help_command}'.").format(
+                body=_("Hi {user[first_name]}, mit mir kann man auch direkt schreiben. "
+                       "Wenn du möchtest, kannst du hier auch @{bot_username} vor allen Befehlen weg lassen. "
+                       "Probier es aus: Antworte mir einfach mit '{help_command}' und du bekommst eine Liste aller Befehle").format(
                     user=user,
-                    help_command=MessageController.get_command_text('Hilfe', 'de')
+                    help_command=MessageController.get_command_text('Hilfe', 'de'),
+                    bot_username=self.bot_username
                 ),
                 # keyboards are a great way to provide a menu of options for a user to respond with!
                 keyboards=[SuggestedResponseKeyboard(responses=[MessageController.generate_text_response("Hilfe")])]
@@ -123,7 +129,10 @@ class MessageController:
             else:
                 success = self.character_persistent_class.set_char_pic(status_obj['data']['user_id'], self.get_from_userid(message), message.pic_url, status_obj['data']['char_id'])
                 if success is True:
-                    body = _("Alles klar! Das Bild wurde gesetzt.")
+                    body = _("Alles klar! Das Bild wurde gesetzt. Bitte melde dich bei @{} damit das Bild bestätigt werden kann. "
+                             "Dies ist notwendig, da Kik eine Zero-Tolerance-Policy gegenüber evtl. anstößigen Bildern hat.".format(
+                        self.config.get("Admins", "admin1").split(',')[0].strip()
+                    ))
                     show_resp = self.generate_text_response_user_char("Anzeigen", status_obj['data']['user_id'], status_obj['data']['char_id'], message)
                 else:
                     body = _("Beim hochladen ist ein Fehler aufgetreten. Bitte versuche es erneut.")
@@ -230,13 +239,14 @@ class MessageController:
 
         pic_url = character_persistent_class.get_char_pic_url(char_data["user_id"], char_data["char_id"])
 
-        if pic_url is not None:
-            body_char_appendix += _("\n\nLeider können derzeit keine Bilder angezeigt werden, da dies zum Bann des Bots führen kann.")
-        #    response_messages.append(PictureMessage(
-        #        to=message.from_user,
-        #        chat_id=message.chat_id,
-        #        pic_url=pic_url,
-        #    ))
+        if pic_url is False:
+            body_char_appendix += _("\n\nCharakter-Bilder müssen vor dem Anzeigen bestätigt werden.")
+        elif pic_url is not None:
+            response_messages.append(PictureMessage(
+                to=message.from_user,
+                chat_id=message.chat_id,
+                pic_url=pic_url,
+            ))
 
         body = _("{char_text}\n\n---\nCharakter von {from_user}\nErstellt von {creator_user}\nErstellt am {created:%d.%m.%Y %H:%M}{appendix}").format(
             char_text=str(char_data["text"]).format(
@@ -1342,7 +1352,7 @@ def msg_cmd_more_examples(self, message, message_body, message_body_c, response_
             "Die Befehle Ändern und Hinzufügen bewirken das gleiche\n"
             "Wird kein Benutzername angegeben so betrifft die Änderung bzw. das Hinzufügen einen selbst\n"
             "------\n"
-            "@{bot_username} {show_command} @ismil1110\n"
+            "@{bot_username} {show_command} @{admin_user}\n"
             "------\n"
             "@{bot_username} {show_command}\n"
             "------\n"
@@ -1369,12 +1379,13 @@ def msg_cmd_more_examples(self, message, message_body, message_body_c, response_
             dice_command=MessageController.get_command_text("Würfeln", 'de'),
             add_command=MessageController.get_command_text("Hinzufügen", 'de'),
             change_command=MessageController.get_command_text("Ändern", 'de'),
-            number=7
+            number=7,
+            admin_user=self.config.get("Admins", "admin1").split(',')[0].strip()
         ),
         keyboards=[SuggestedResponseKeyboard(responses=[
             MessageController.generate_text_response("Hilfe"),
             MessageController.generate_text_response("Hinzufügen {}".format(_("Neuer Charakter"))),
-            MessageController.generate_text_response("Anzeigen @ismil1110"),
+            MessageController.generate_text_response("Anzeigen @{}".format(self.config.get("Admins", "admin1").split(',')[0].strip())),
             MessageController.generate_text_response("Anzeigen"),
             MessageController.generate_text_response("Liste"),
             MessageController.generate_text_response("Hilfe"),
@@ -1526,7 +1537,7 @@ def msg_cmd_other(self, message: TextMessage, message_body, message_body_c, resp
             kik_group_id=self.config.get("KikGroup", "somegroup"),
             user_id=self.get_from_userid(message),
             message=message,
-            ruser=LazyRandomKikUser(message.participants, message.from_user)
+            ruser=LazyRandomKikUser(message.participants, message.from_user, self.config.get("Admins", "admin1").split(',')[0].strip())
         ))
 
         for m in messages:
