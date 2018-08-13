@@ -3,7 +3,7 @@ msgstr ""
 "Project-Id-Version: rpcharbot\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
 "POT-Creation-Date: 2018-08-13 09:44+0200\n"
-"PO-Revision-Date: 2018-08-13 07:52\n"
+"PO-Revision-Date: 2018-08-13 09:03\n"
 "Last-Translator: shugo1110 <shugo1110@gmail.com>\n"
 "Language-Team: English\n"
 "MIME-Version: 1.0\n"
@@ -37,7 +37,7 @@ msgstr ""
 
 #: modules/message_controller.py:112 modules/message_controller.py:152
 msgid "Sorry {user[first_name]}, ich habe dich nicht verstanden."
-msgstr ""
+msgstr "Sorry {user[first_name]}, I don't understand you."
 
 #: modules/message_controller.py:121
 msgid "Sorry {user[first_name]}, mit diesem Bild kann ich leider nichts anfangen."
@@ -49,17 +49,19 @@ msgstr ""
 
 #: modules/message_controller.py:131
 msgid "Beim hochladen ist ein Fehler aufgetreten. Bitte versuche es erneut."
-msgstr ""
+msgstr "An error occurred while uploading the image. Please try again."
 
 #: modules/message_controller.py:199
 msgid "Du bist nicht berechtigt diesen Befehl auszuführen!\n"
 "Bitte melde dich in der Gruppe #{kik_group_id} und erfrage eine Berechtigung."
-msgstr ""
+msgstr "You are not allowed to execute this command!\n"
+"please sign up in the group #{kik_group_id} and request permission."
 
 #: modules/message_controller.py:221
 msgid "\n\n"
 "(Weitere Charaktere des Nutzers vorhanden: {icon_left} und {icon_right} zum navigieren)"
-msgstr ""
+msgstr "\n\n"
+"(more characters of the user are present: {icon_left} and {icon_right} to the navigate)"
 
 #: modules/message_controller.py:236
 msgid "\n\n"
@@ -321,39 +323,39 @@ msgstr ""
 
 #: modules/message_controller.py:1378
 msgid "Neuer Charakter"
-msgstr ""
+msgstr "New Character"
 
 #: modules/message_controller.py:1384
 msgid "Rot, Grün, Blau, Schwarz, Weiß"
-msgstr ""
+msgstr "red, green, blue, black, white"
 
 #: modules/message_controller.py:1400
 msgid "Kopf"
-msgstr ""
+msgstr "head"
 
 #: modules/message_controller.py:1400
 msgid "Zahl"
-msgstr ""
+msgstr "number"
 
 #: modules/message_controller.py:1402
 msgid "Die Münze zeigt"
-msgstr ""
+msgstr "The coin shows"
 
 #: modules/message_controller.py:1406 modules/message_controller.py:1411
 msgid "Der Würfel zeigt"
-msgstr ""
+msgstr "The dice shows"
 
 #: modules/message_controller.py:1466 modules/message_controller.py:1468
 msgid "Die Würfel zeigen"
-msgstr ""
+msgstr "The dice show"
 
 #: modules/message_controller.py:1469
 msgid "Ergebnis"
-msgstr ""
+msgstr "Result"
 
 #: modules/message_controller.py:1485
 msgid "Ich wähle"
-msgstr ""
+msgstr "I choose"
 
 #: modules/message_controller.py:1546
 msgid "Sorry {user[first_name]}, den Befehl '{command}' kenne ich nicht."
