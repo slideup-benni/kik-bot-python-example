@@ -3,7 +3,7 @@ msgstr ""
 "Project-Id-Version: rpcharbot\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
 "POT-Creation-Date: 2018-08-13 09:44+0200\n"
-"PO-Revision-Date: 2018-08-13 09:12\n"
+"PO-Revision-Date: 2018-08-13 09:22\n"
 "Last-Translator: shugo1110 <shugo1110@gmail.com>\n"
 "Language-Team: English\n"
 "MIME-Version: 1.0\n"
@@ -134,7 +134,7 @@ msgstr "All right! The first character of @{user_id} was saved."
 
 #: modules/message_controller.py:526
 msgid "Alles klar! Dein erster Charakter wurde gespeichert."
-msgstr ""
+msgstr "All right! Your first character was saved."
 
 #: modules/message_controller.py:589
 msgid "Alles Klar! Bitte schicke jetzt das Bild direkt an @{bot_username}"
