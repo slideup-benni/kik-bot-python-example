@@ -1401,7 +1401,17 @@ def msg_cmd_more_examples(self, message, message_body, message_body_c, response_
 #
 @MessageController.add_method({"de": "Würfeln", "en": "dice", "_alts": ["Würfel", u"\U0001F3B2"]})
 @MessageController.add_method({"de": "Münze", "en": "coin"})
-def msg_cmd_roll(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User):
+def msg_cmd_roll(self, message: TextMessage, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User):
+    bracket = None
+    accepted_brackets = {
+        'open': ["(", "[", "*"],
+        'close': [")", "]", "*"],
+    }
+    if message_body[-1:] in accepted_brackets['close']:
+        bracket = accepted_brackets['close'].index(message_body[-1:])
+        message_body = message_body[:-1].strip()
+        message_body_c = message_body_c[:-1].strip()
+
     message_command = message_body.split(None, 1)[0]
     body = ""
 
@@ -1496,8 +1506,15 @@ def msg_cmd_roll(self, message, message_body, message_body_c, response_messages,
 
     user_command_status = CharacterPersistentClass.STATUS_DYN_MESSAGES
     user_command_status_data = {
-        'redo': message_body_c
+        'redo': message.body
     }
+
+    if bracket is not None:
+        body = "{} {} {}".format(
+            accepted_brackets['open'][bracket],
+            body,
+            accepted_brackets['close'][bracket]
+        )
 
     response_messages.append(TextMessage(
         to=message.from_user,
