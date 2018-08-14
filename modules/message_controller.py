@@ -1554,15 +1554,21 @@ def msg_cmd_other(self, message: TextMessage, message_body, message_body_c, resp
             kik_group_id=self.config.get("KikGroup", "somegroup"),
             user_id=self.get_from_userid(message),
             message=message,
-            ruser=LazyRandomKikUser(message.participants, message.from_user, self.config.get("Admins", "admin1").split(',')[0].strip())
+            ruser=LazyRandomKikUser(message.participants, message.from_user, self.config.get("Admins", "admin1").split(',')[0].strip()),
+            args=[x.strip() for x in message_body_c.split()[1:]]
         ))
+
+        if len(keyboard_responses) > 0:
+            kb = [SuggestedResponseKeyboard(responses=keyboard_responses)]
+        else:
+            kb = []
 
         for m in messages:
             response_messages.append(TextMessage(
                 to=message.from_user,
                 chat_id=message.chat_id,
                 body=m,
-                keyboards=[SuggestedResponseKeyboard(responses=keyboard_responses)]
+                keyboards=kb
             ))
 
     else:
