@@ -381,6 +381,17 @@ class MessageController:
 
         return add_method_decore
 
+    @staticmethod
+    def get_error_response(message, command="Hilfe"):
+        return TextMessage(
+            to=message.from_user,
+            chat_id=message.chat_id,
+            body=_("Fehler beim Aufruf des Befehls. Siehe '{help_command}'.").format(
+                help_command=MessageController.get_command_text(command, 'de')
+            ),
+            keyboards=[SuggestedResponseKeyboard(responses=[MessageController.generate_text_response(command)])]
+        )
+
 
 #
 # Befehl hinzufügen
@@ -451,14 +462,7 @@ def msg_cmd_add(self, message, message_body, message_body_c, response_messages, 
                 body=body2
             ))
     else:
-        response_messages.append(TextMessage(
-            to=message.from_user,
-            chat_id=message.chat_id,
-            body=_("Fehler beim Aufruf des Befehls. Siehe '{help_command}'.").format(
-                help_command=MessageController.get_command_text('Hilfe', 'de')
-            ),
-            keyboards=[SuggestedResponseKeyboard(responses=[MessageController.generate_text_response("Hilfe")])]
-        ))
+        response_messages.append(MessageController.get_error_response(message))
     return response_messages, user_command_status, user_command_status_data
 
 
@@ -540,14 +544,7 @@ def msg_cmd_change(self, message, message_body, message_body_c, response_message
             ])]
         ))
     else:
-        response_messages.append(TextMessage(
-            to=message.from_user,
-            chat_id=message.chat_id,
-            body=_("Fehler beim Aufruf des Befehls. Siehe '{help_command}'.").format(
-                help_command=MessageController.get_command_text('Hilfe', 'de')
-            ),
-            keyboards=[SuggestedResponseKeyboard(responses=[MessageController.generate_text_response("Hilfe")])]
-        ))
+        response_messages.append(MessageController.get_error_response(message))
     return response_messages, user_command_status, user_command_status_data
 
 
@@ -766,14 +763,7 @@ def msg_cmd_move(self, message, message_body, message_body_c, response_messages,
             ))
 
     else:
-        response_messages.append(TextMessage(
-            to=message.from_user,
-            chat_id=message.chat_id,
-            body=_("Fehler beim Aufruf des Befehls. Siehe '{help_command}'.").format(
-                help_command=MessageController.get_command_text('Hilfe', 'de')
-            ),
-            keyboards=[SuggestedResponseKeyboard(responses=[MessageController.generate_text_response("Hilfe")])]
-        ))
+        response_messages.append(MessageController.get_error_response(message))
     return response_messages, user_command_status, user_command_status_data
 
 
@@ -829,14 +819,7 @@ def msg_cmd_delete(self, message, message_body, message_body_c, response_message
             ))
 
     else:
-        response_messages.append(TextMessage(
-            to=message.from_user,
-            chat_id=message.chat_id,
-            body=_("Fehler beim Aufruf des Befehls. Siehe '{help_command}'.").format(
-                help_command=MessageController.get_command_text('Hilfe', 'de')
-            ),
-            keyboards=[SuggestedResponseKeyboard(responses=[MessageController.generate_text_response("Hilfe")])]
-        ))
+        response_messages.append(MessageController.get_error_response(message))
     return response_messages, user_command_status, user_command_status_data
 
 
@@ -898,14 +881,7 @@ def msg_cmd_delete_last(self, message, message_body, message_body_c, response_me
             ))
 
     else:
-        response_messages.append(TextMessage(
-            to=message.from_user,
-            chat_id=message.chat_id,
-            body=_("Fehler beim Aufruf des Befehls. Siehe '{help_command}'.").format(
-                help_command=MessageController.get_command_text('Hilfe', 'de')
-            ),
-            keyboards=[SuggestedResponseKeyboard(responses=[MessageController.generate_text_response("Hilfe")])]
-        ))
+        response_messages.append(MessageController.get_error_response(message))
     return response_messages, user_command_status, user_command_status_data
 
 
@@ -953,14 +929,7 @@ def msg_cmd_search(self, message, message_body, message_body_c, response_message
 
 
     else:
-        response_messages.append(TextMessage(
-            to=message.from_user,
-            chat_id=message.chat_id,
-            body=_("Fehler beim Aufruf des Befehls. Siehe '{help_command}'.").format(
-                help_command=MessageController.get_command_text('Hilfe', 'de')
-            ),
-            keyboards=[SuggestedResponseKeyboard(responses=[MessageController.generate_text_response("Hilfe")])]
-        ))
+        response_messages.append(MessageController.get_error_response(message))
     return response_messages, user_command_status, user_command_status_data
 
 
@@ -1006,14 +975,7 @@ def msg_cmd_set_cmd_keyboards(self, message, message_body, message_body_c, respo
                         responses=[MessageController.generate_text_response(static_message['command']), MessageController.generate_text_response("Admin-Hilfe")])]
                 ))
         else:
-            response_messages.append(TextMessage(
-                to=message.from_user,
-                chat_id=message.chat_id,
-                body=_("Fehler beim Aufruf des Befehls. Siehe '{help_command}'.").format(
-                    help_command=MessageController.get_command_text('Admin-Hilfe', 'de')
-                ),
-                keyboards=[SuggestedResponseKeyboard(responses=[MessageController.generate_text_response("Admin-Hilfe")])]
-            ))
+            response_messages.append(MessageController.get_error_response(message, "Admin-Hilfe"))
     else:
         response_messages.append(TextMessage(
             to=message.from_user,
@@ -1065,14 +1027,7 @@ def msg_cmd_set_cmd_alt_cmd(self, message, message_body, message_body_c, respons
                         responses=[MessageController.generate_text_response(static_message['command']), MessageController.generate_text_response("Admin-Hilfe")])]
                 ))
         else:
-            response_messages.append(TextMessage(
-                to=message.from_user,
-                chat_id=message.chat_id,
-                body=_("Fehler beim Aufruf des Befehls. Siehe '{help_command}'.").format(
-                    help_command=MessageController.get_command_text('Admin-Hilfe', 'de')
-                ),
-                keyboards=[SuggestedResponseKeyboard(responses=[MessageController.generate_text_response("Admin-Hilfe")])]
-            ))
+            response_messages.append(MessageController.get_error_response(message, "Admin-Hilfe"))
     else:
         response_messages.append(TextMessage(
             to=message.from_user,
@@ -1126,14 +1081,7 @@ def msg_cmd_set_command(self, message, message_body, message_body_c, response_me
                     responses=[MessageController.generate_text_response(static_message["command"]), MessageController.generate_text_response("Admin-Hilfe")])]
             ))
         else:
-            response_messages.append(TextMessage(
-                to=message.from_user,
-                chat_id=message.chat_id,
-                body=_("Fehler beim Aufruf des Befehls. Siehe '{help_command}'.").format(
-                    help_command=MessageController.get_command_text('Admin-Hilfe', 'de')
-                ),
-                keyboards=[SuggestedResponseKeyboard(responses=[MessageController.generate_text_response("Admin-Hilfe")])]
-            ))
+            response_messages.append(MessageController.get_error_response(message, "Admin-Hilfe"))
     else:
         response_messages.append(TextMessage(
             to=message.from_user,
@@ -1170,14 +1118,7 @@ def msg_cmd_auth(self, message, message_body, message_body_c, response_messages,
             ))
 
     else:
-        response_messages.append(TextMessage(
-            to=message.from_user,
-            chat_id=message.chat_id,
-            body=_("Fehler beim Aufruf des Befehls. Siehe '{help_command}'.").format(
-                help_command=MessageController.get_command_text('Hilfe', 'de')
-            ),
-            keyboards=[SuggestedResponseKeyboard(responses=[MessageController.generate_text_response("Hilfe")])]
-        ))
+        response_messages.append(MessageController.get_error_response(message))
     return response_messages, user_command_status, user_command_status_data
 
 
@@ -1207,14 +1148,7 @@ def msg_cmd_unauth(self, message, message_body, message_body_c, response_message
             ))
 
     else:
-        response_messages.append(TextMessage(
-            to=message.from_user,
-            chat_id=message.chat_id,
-            body=_("Fehler beim Aufruf des Befehls. Siehe '{help_command}'.").format(
-                help_command=MessageController.get_command_text('Hilfe', 'de')
-            ),
-            keyboards=[SuggestedResponseKeyboard(responses=[MessageController.generate_text_response("Hilfe")])]
-        ))
+        response_messages.append(MessageController.get_error_response(message))
     return response_messages, user_command_status, user_command_status_data
 
 
@@ -1490,14 +1424,7 @@ def msg_cmd_roll(self, message: TextMessage, message_body, message_body_c, respo
         possibilities = [x.strip() for x in message_body_c.split(None, 1)[1].split(',')]
 
         if len(possibilities) == 1:
-            response_messages.append(TextMessage(
-                to=message.from_user,
-                chat_id=message.chat_id,
-                body=_("Fehler beim Aufruf des Befehls. Siehe '{help_command}'.").format(
-                    help_command=MessageController.get_command_text('Hilfe', 'de')
-                ),
-                keyboards=[SuggestedResponseKeyboard(responses=[MessageController.generate_text_response("Hilfe")])]
-            ))
+            response_messages.append(MessageController.get_error_response(message))
             return response_messages, user_command_status, user_command_status_data
 
         result = possibilities[random.randint(0, len(possibilities) - 1)]
