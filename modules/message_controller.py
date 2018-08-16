@@ -11,6 +11,113 @@ from modules.character_persistent_class import CharacterPersistentClass
 from modules.kik_user import User, LazyKikUser, LazyRandomKikUser
 
 
+class MessageParam:
+    CONST_REGEX_ALPHA = r"[a-z]+"
+    CONST_REGEX_ALPHANUM = r"[a-z0-9]+"
+    CONST_REGEX_NUM = r"[0-9]+"
+    CONST_REGEX_DIGIT = r"[0-9]"
+    CONST_REGEX_USER_ID = r"@[a-z0-9\.\_]+"
+    CONST_REGEX_COMMAND = r"\S+"
+    CONST_REGEX_TEXT = r".+"
+
+    def __init__(self, name, regex, required=False):
+        self.name = name
+        self.regex = regex
+        self.required = required
+
+    def get_regex(self):
+        return r"(?P<{name}>{regex}){req}".format(
+            name=self.name,
+            regex=self.regex,
+            req="" if self.required is True else "?"
+        )
+
+    def get_help_desc(self):
+        if self.required is True:
+            return self.name
+        return "(" + self.name + ")"
+
+    def get_name(self):
+        return self.name
+
+    @staticmethod
+    def init_selection(name, selection: list, required=False):
+        return MessageParam(name, r"({})".format(
+            "|".join([re.escape(str(x).lower()) for x in selection])
+        ), required)
+
+
+class MessageCommand:
+
+    def __init__(self, params: list, command_de, command_en, command_alts=None, help_command="Hilfe"):
+        self.help_command = help_command
+        self.command = {
+            'de': command_de,
+            'en': command_en,
+            '_alts': [] if command_alts is None else command_alts
+        }
+
+        self.params = [
+            MessageParam("command", MessageParam.CONST_REGEX_COMMAND, required=True)
+        ]
+        self.params.extend(params)
+
+    def add_param(self, param: MessageParam):
+        self.params.append(param)
+
+    def get_regex(self):
+        return r"^\s*{}\s*$".format(
+            "\s*".join([x.get_regex() for x in self.params])
+        )
+
+    def get_help_desc(self, lang):
+        help_desc = self.command[lang] if lang in self.command else self.command["de"]
+        for x in self.params[1:]:
+            help_desc += " " + x.get_help_desc()
+        return help_desc
+
+    def get_example(self, params: dict, lang):
+        example_str = params["command"] if "command" in params else (self.command[lang] if lang in self.command else self.command["de"])
+        for x in self.params[1:]:
+            name = x.get_name()
+            if name in params and params[name] is not None:
+                example_str += " " + str(params[name])
+        return example_str
+
+    def __getitem__(self, item):
+        return self.command[item]
+
+    def items(self):
+        return self.command.items()
+
+    def get_method(self, func):
+
+        def method(controller, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User):
+
+            regex = re.compile(self.get_regex(), re.IGNORECASE | re.MULTILINE)
+            match = regex.match(message_body_c.strip())
+            if match is None:
+                response_messages.append(TextMessage(
+                    to=message.from_user,
+                    chat_id=message.chat_id,
+                    body=_("Fehler beim Aufruf des Befehls.\n\n"
+                           "Die Struktur des Befehls sieht wie folgt aus:\n"
+                           "{command_structure}\n\n"
+                           "Für weitere Beispiele siehe '{help_command}'.").format(
+                        command_structure=self.get_help_desc("de"),
+                        help_command="{} {}".format(MessageController.get_command_text("Hilfe", 'de'), self.command["de"])
+                    ),
+                    keyboards=[SuggestedResponseKeyboard(responses=[
+                        MessageController.generate_text_response("{} {}".format("Hilfe", self.command["de"])),
+                        MessageController.generate_text_response(self.help_command),
+                    ])]
+                ))
+                return response_messages, user_command_status, user_command_status_data
+
+            return func(controller, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user, match.groupdict(), self)
+        return method
+
+
 class MessageController:
     methods = list()
 
@@ -374,7 +481,10 @@ class MessageController:
     @staticmethod
     def add_method(commands):
         def add_method_decore(func):
-            idx = len(MessageController.methods)
+
+            if isinstance(commands, MessageCommand):
+                func = commands.get_method(func)
+
             MessageController.methods.append({
                 "func": func,
                 "cmds": commands
@@ -1230,8 +1340,12 @@ def msg_cmd_list(self, message, message_body, message_body_c, response_messages,
 #
 # Befehl Vorlage
 #
-@MessageController.add_method({"de": "Vorlage", "en": "template", "_alts": ["Charaktervorlage", "boilerplate", "draft", "Steckbriefvorlage", "Stecki"]})
-def msg_cmd_template(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User):
+template_command = MessageCommand([
+    MessageParam("user_id", MessageParam.CONST_REGEX_USER_ID, False),
+], "Vorlage", "template", ["Charaktervorlage", "boilerplate", "draft", "Steckbriefvorlage", "Stecki"])
+
+@MessageController.add_method(template_command)
+def msg_cmd_template(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User, params: dict, command):
     response_messages.append(TextMessage(
         to=message.from_user,
         chat_id=message.chat_id,
@@ -1256,9 +1370,10 @@ def msg_cmd_template(self, message, message_body, message_body_c, response_messa
         to=message.from_user,
         chat_id=message.chat_id,
         body=(
-                "@{bot_username} {add_command} \n".format(
+                "@{bot_username} {add_command} {user_id_wa}\n".format(
                     bot_username=self.bot_username,
                     add_command=MessageController.get_command_text("Hinzufügen", 'de'),
+                    user_id_wa=params["user_id"] if params["user_id"] is not None else ""
                 ) + template_message["response"]
         ),
         keyboards=[SuggestedResponseKeyboard(responses=[MessageController.generate_text_response("Hilfe"), MessageController.generate_text_response("Weitere-Beispiele")])]
