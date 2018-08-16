@@ -280,7 +280,9 @@ class MessageController:
         new_body = ""
         for b in body_split:
             if len(new_body) + len(b) + len(split_char) < max_chars:
-                new_body += split_char + b
+                if new_body != "":
+                    new_body += split_char
+                new_body += b
             elif len(b) + len(split_char) >= max_chars:
                 new_message_to_split = new_body + split_char + b if len(new_body) != 0 else b
                 new_split_char = "" if split_char == "\n" else "\n"
