@@ -6,11 +6,11 @@ import re
 import time
 
 
-from kik.messages import TextMessage, SuggestedResponseKeyboard
+from kik.messages import TextMessage
 
 from modules.character_persistent_class import CharacterPersistentClass
 from modules.kik_user import User
-from modules.message_controller import MessageController, MessageCommand, MessageParam
+from modules.message_controller import MessageController, MessageCommand, MessageParam, CommandMessageResponse
 from datetime import timedelta
 
 def parse_work_string(time_str, regex_str):
@@ -88,11 +88,11 @@ class CharacterStats:
     def gen_stat_message(self, lang):
         stat_names = self.get_stat_names(lang)
         message = ""
-        
+
         ava_exp = math.floor(self.get_available_exp())
         if ava_exp != 0:
             message += "Erfahrungspunkte verfügbar: {}\n---\n\n".format(ava_exp)
-        
+
         for stat_id, stat_name in stat_names.items():
             stat_points = self.get_stat_by_id(stat_id)
             message += "{stat_name}:\n|{stat_blocks_black}{stat_blocks_white}| {stat_points:2d}\n\n".format(
@@ -176,7 +176,7 @@ class CharacterStats:
 
 
 class ModuleCharacterPersistentClass(CharacterPersistentClass):
-    
+
     def set_char_stat(self, user_id, stat_id, stat_num, char_id=None):
         self.connect_database()
 
@@ -267,6 +267,72 @@ class ModuleMessageController(MessageController):
         MessageController.__init__(self, bot_username, config_file)
         self.character_persistent_class = ModuleCharacterPersistentClass(self.config)
 
+    @staticmethod
+    def require_user_id(message_controller, params, key, response: CommandMessageResponse):
+        message = response.get_orig_message()
+        command = response.get_command()
+
+        if params[key] is None and ModuleMessageController.is_aliased(message):
+            response.add_response_message("Leider konnte ich deinen Nutzer nicht zuordnen. Bitte führe den Befehl erneut mit deiner Nutzer-Id aus:")
+            response.add_response_message("@{bot_username} {command}".format(
+                bot_username=message_controller.bot_username,
+                command=command.get_example({**params, key: "@Deine_User_Id"}, "de")
+            ))
+            return None, response
+
+        if params[key] is None:
+            params[key] = "@" + message.from_user
+
+        return params[key], response
+
+    @staticmethod
+    def require_char_id(message_controller, params, key, user_id, response: CommandMessageResponse):
+        command = response.get_command()
+        chars = message_controller.character_persistent_class.get_all_user_chars(user_id)
+
+        if len(chars) == 0:
+            response.add_response_message("Der Nutzer @{user_id} hat derzeit noch keine Charaktere angelegt. Siehe 'Vorlage' um einen Charakter zu erstellen.".format(
+                user_id=user_id
+            ))
+            response.set_suggestions(["Vorlage @{}".format(user_id)])
+            return None, response
+
+        if len(chars) > 1 and params[key] is None:
+
+            chars_txt = ""
+            for char in chars:
+                if chars_txt != "":
+                    chars_txt += "\n---\n\n"
+                char_names = "\n".join(re.findall(r".*?name.*?:.*?\S+?.*", char["text"]))
+                if char_names == "":
+                    char_names = "Im Steckbrief wurden keine Namen gefunden"
+                chars_txt += "*Charakter {char_id}*\n{char_names}".format(
+                    char_id=char["char_id"],
+                    char_names=char_names
+                )
+
+            big_body = "Für den Nutzer sind mehrere Charaktere vorhanden. Bitte wähle einen aus:\n\n" + chars_txt
+            for body in ModuleMessageController.split_messages(big_body, "---"):
+                response.add_response_message(body)
+                response.set_suggestions([command.get_example({**params, "char_id": char["char_id"]}, "de") for char in chars][:12])
+
+            return None, response
+
+        if len(chars) == 1 and params[key] is None:
+            params[key] = chars[0]["char_id"]
+
+        found = False
+        for char in chars:
+            if int(char["char_id"]) == int(params[key]):
+                found = True
+                break
+
+        if found is False:
+            response.add_response_message("Der Charakter mit der Id {} konnte nicht gefunden werden.".format(params[key]))
+            response.set_suggestions([command.get_example({**params, "char_id": char["char_id"]}, "de") for char in chars][:12])
+            return None, response
+        return int(params[key]), response
+
 
 @ModuleMessageController.add_method({"de": "leichte-arbeit", "en": "easy-work", "_alts": []})
 def easy_msg_work(self, message: TextMessage, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User):
@@ -313,111 +379,39 @@ def hard_msg_work(self, message: TextMessage, message_body, message_body_c, resp
 set_stats_command = MessageCommand([
     MessageParam("user_id", MessageParam.CONST_REGEX_USER_ID),
     MessageParam("char_id", MessageParam.CONST_REGEX_NUM),
-    MessageParam.init_selection("stat_name", list(CharacterStats.get_all_stat_names("de"))),
-    MessageParam("stat_num", MessageParam.CONST_REGEX_NUM)
-], "Statuswerte-setzen", "set-stats")
+    MessageParam.init_selection("stat_name", list(CharacterStats.get_all_stat_names("de")), required=True, validate_in_message=True),
+    MessageParam("stat_num", MessageParam.CONST_REGEX_NUM, required=True, validate_in_message=True)
+], "Statuswerte-setzen", "set-stats", ["Stats-setzen", "Stat-setzen", "Statuswert-setzen"])
 @ModuleMessageController.add_method(set_stats_command)
-def set_stats(self: ModuleMessageController, message: TextMessage, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User, params: dict, command: MessageCommand):
-    orig_params = params.copy()
+def set_stats(response: CommandMessageResponse):
+    message_controller = response.get_message_controller()
+    params = response.get_params()
+    command = response.get_command()
 
-    if params["user_id"] is None and ModuleMessageController.is_aliased(message):
-        params["user_id"] = "@Deine_User_Id"
-        response_messages.append(TextMessage(
-            to=message.from_user,
-            chat_id=message.chat_id,
-            body="Leider konnte ich deinen Nutzer nicht zuordnen. Bitte führe den Befehl erneut mit deiner Nutzer-Id aus:"
-        ))
-        response_messages.append(TextMessage(
-            to=message.from_user,
-            chat_id=message.chat_id,
-            body="@{bot_username} {command}".format(
-                bot_username=self.bot_username,
-                command=command.get_example(params, "de")
-            )
-        ))
-        return response_messages, user_command_status, user_command_status_data
-    elif params["user_id"] is None:
-        params["user_id"] = "@" + message.from_user
+    user_id, response = ModuleMessageController.require_user_id(message_controller, params, "user_id", response)
+    if user_id is None:
+        return response
 
-    chars = self.character_persistent_class.get_all_user_chars(params["user_id"][1:])
+    plain_user_id = user_id[1:]
 
-    if len(chars) == 0:
-        response_messages.append(TextMessage(
-            to=message.from_user,
-            chat_id=message.chat_id,
-            body="Der Nutzer {user_id_wa} hat derzeit noch keine Charaktere angelegt. Siehe 'Vorlage' um einen Charakter zu erstellen.".format(
-                user_id_wa=params["user_id"]
-            ),
-            keyboards=[SuggestedResponseKeyboard(responses=[
-                ModuleMessageController.generate_text_response("Vorlage {}".format(params["user_id"]))
-            ])]
-        ))
-        return response_messages, user_command_status, user_command_status_data
-
-    if len(chars) > 1 and params["char_id"] is None:
-
-        chars_txt = ""
-        for char in chars:
-            if chars_txt != "":
-                chars_txt += "\n---\n\n"
-            char_names = "\n".join(re.findall(r".*?name.*?:.*?\S+?.*", char["text"]))
-            if char_names == "":
-                char_names = "Im Steckbrief wurden keine Namen gefunden"
-            chars_txt += "*Charakter {char_id}*\n{char_names}".format(
-                char_id=char["char_id"],
-                char_names=char_names
-            )
-
-        big_body = "Für den Nutzer sind mehrere Charaktere vorhanden. Bitte wähle einen aus:\n\n"+chars_txt
-        for body in ModuleMessageController.split_messages(big_body, "---"):
-            keyboards = [ModuleMessageController.generate_text_response(command.get_example({**orig_params, "char_id": char["char_id"]}, "de")) for char in chars][:12]
-            response_messages.append(TextMessage(
-                to=message.from_user,
-                chat_id=message.chat_id,
-                body=body,
-                keyboards=([SuggestedResponseKeyboard(responses=keyboards)]) if len(keyboards) != 0 else []
-            ))
-        return response_messages, user_command_status, user_command_status_data
-    elif len(chars) == 1 and params["char_id"] is None:
-        params["char_id"] = chars[0]["char_id"]
-        
-    found = False
-    for char in chars:
-        if int(char["char_id"]) == int(params["char_id"]):
-            found = True
-            break
-
-    if found is False:
-        keyboards = [ModuleMessageController.generate_text_response(command.get_example({**orig_params, "char_id": char["char_id"]}, "de")) for char in chars][:12]
-        response_messages.append(TextMessage(
-            to=message.from_user,
-            chat_id=message.chat_id,
-            body="Der Charakter mit der Id {} konnte nicht gefunden werden.".format(params["char_id"]),
-            keyboards=([SuggestedResponseKeyboard(responses=keyboards)]) if len(keyboards) != 0 else []
-        ))
-        return response_messages, user_command_status, user_command_status_data
+    char_id, response = ModuleMessageController.require_char_id(message_controller, params, "char_id", plain_user_id, response)
+    if char_id is None:
+        return response
 
     stat_names = CharacterStats.get_stat_names("de")
     if params["stat_name"] is None:
-        keyboards = [ModuleMessageController.generate_text_response(command.get_example({**orig_params, "stat_name": stat_name}, "de")) for stat_id, stat_name in stat_names.items()]
-        response_messages.append(TextMessage(
-            to=message.from_user,
-            chat_id=message.chat_id,
-            body="Du hast keinen Statuswert angegeben. Mögliche Werte sind:\n\n{stat_names}".format(
-                stat_names="\n".join([stat_name for stat_id, stat_name in stat_names.items()])
-            ),
-            keyboards=([SuggestedResponseKeyboard(responses=keyboards)]) if len(keyboards) != 0 else []
-
+        response.add_response_message("Du hast keinen Statuswert angegeben. Mögliche Werte sind:\n\n{stat_names}".format(
+            stat_names="\n".join([stat_name for stat_id, stat_name in stat_names.items()])
         ))
-        return response_messages, user_command_status, user_command_status_data
+        response.set_suggestions([command.get_example({**params, "stat_name": stat_name}, "de") for stat_id, stat_name in stat_names.items()])
+        return response
 
-    character_persistent_class = self.character_persistent_class  # type: ModuleCharacterPersistentClass
+    character_persistent_class = message_controller.character_persistent_class  # type: ModuleCharacterPersistentClass
     curr_stat_id = CharacterStats.stat_id_from_name(params["stat_name"], "de")
 
-
     if params["stat_num"] is None:
-        char_stats_db = character_persistent_class.get_char_stats(params["user_id"][1:], int(params["char_id"]))
-        stats = CharacterStats(char_stats_db) if char_stats_db is not None else CharacterStats.init_empty(params["user_id"][1:], int(params["char_id"]))
+        char_stats_db = character_persistent_class.get_char_stats(plain_user_id, char_id)
+        stats = CharacterStats(char_stats_db) if char_stats_db is not None else CharacterStats.init_empty(plain_user_id, char_id)
         curr_stat_points = stats.get_stat_by_id(curr_stat_id)
         ava_exp = stats.get_available_exp()
         possible_points = []
@@ -426,7 +420,8 @@ def set_stats(self: ModuleMessageController, message: TextMessage, message_body,
                 possible_points.append(i)
 
         if len(possible_points) != 0:
-            body = "Du kannst auf {stat_name} bis zu {max_stat_points} Punkte setzen.".format(
+            body = "Du kannst auf {stat_name} bis zu {max_stat_points} Punkte setzen.\n\n" \
+                   "Für 1-8 wird jeweils ein, für 9 zwei und für 10 drei Erfahrungspunkte benötigt.".format(
                 stat_name=params["stat_name"],
                 max_stat_points=possible_points[len(possible_points) - 1]
             )
@@ -435,44 +430,56 @@ def set_stats(self: ModuleMessageController, message: TextMessage, message_body,
                 stat_name=params["stat_name"]
             )
 
-        keyboards = [ModuleMessageController.generate_text_response(command.get_example({**orig_params, "stat_num": stat_point}, "de")) for stat_point in possible_points]
-        response_messages.append(TextMessage(
-            to=message.from_user,
-            chat_id=message.chat_id,
-            body=body,
-            keyboards=([SuggestedResponseKeyboard(responses=keyboards)]) if len(keyboards) != 0 else []
+        response.add_response_message(body)
+        response.set_suggestions([command.get_example({**params, "stat_num": stat_point}, "de") for stat_point in possible_points])
+        return response
 
-        ))
-        return response_messages, user_command_status, user_command_status_data
-
-    stats = CharacterStats(character_persistent_class.set_char_stat(params["user_id"][1:], curr_stat_id, params["stat_num"], char_id=int(params["char_id"])))
+    stats = CharacterStats(character_persistent_class.set_char_stat(plain_user_id, curr_stat_id, params["stat_num"], char_id=char_id))
 
     keyboards = []
     for stat_id, stat_name in stat_names.items():
         if stats.get_stat_by_id(stat_id) == 0 and stat_id != curr_stat_id:
-            keyboards.append(ModuleMessageController.generate_text_response(command.get_example({**orig_params, "stat_num": None, "stat_name": stat_name}, "de")))
+            keyboards.append(command.get_example({**params, "stat_num": None, "stat_name": stat_name}, "de"))
     for stat_id, stat_name in stat_names.items():
         if stats.get_stat_by_id(stat_id) != 0 and stat_id != curr_stat_id:
-            keyboards.append(ModuleMessageController.generate_text_response(command.get_example({**orig_params, "stat_num": None, "stat_name": stat_name}, "de")))
+            keyboards.append(command.get_example({**params, "stat_num": None, "stat_name": stat_name}, "de"))
 
-    response_messages.append(TextMessage(
-        to=message.from_user,
-        chat_id=message.chat_id,
-        body=stats.gen_stat_message("de"),
-        keyboards=[SuggestedResponseKeyboard(responses=keyboards)]
+    response.add_response_message(stats.gen_stat_message("de"))
+    response.add_response_message("{stat_name} {stat_points} verleiht dir folgende Eigenschaften:\n\n{stat_text}".format(
+        stat_points=params["stat_num"],
+        stat_name=params["stat_name"],
+        stat_text=CharacterStats.get_stat_text(curr_stat_id, int(params["stat_num"]))
     ))
+    response.set_suggestions(keyboards)
 
-    response_messages.append(TextMessage(
-        to=message.from_user,
-        chat_id=message.chat_id,
-        body="{stat_name} {stat_points} verleiht dir folgende Eigenschaften:\n\n{stat_text}".format(
-            stat_points=params["stat_num"],
-            stat_name=params["stat_name"],
-            stat_text=CharacterStats.get_stat_text(curr_stat_id, int(params["stat_num"]))
-        ),
-        keyboards=[SuggestedResponseKeyboard(responses=keyboards)]
-    ))
+    return response
 
 
-    return response_messages, user_command_status, user_command_status_data
+set_stats_command = MessageCommand([
+    MessageParam("user_id", MessageParam.CONST_REGEX_USER_ID),
+    MessageParam("char_id", MessageParam.CONST_REGEX_NUM),
+], "Statuswerte", "stats", ["Stats-anzeigen", "Statuswerte-anzeigen", "show-stats"])
+@ModuleMessageController.add_method(set_stats_command)
+def set_stats(response: CommandMessageResponse):
+    message_controller = response.get_message_controller()
+    params = response.get_params()
+
+    user_id, response = ModuleMessageController.require_user_id(message_controller, params, "user_id", response)
+    if user_id is None:
+        return response
+
+    plain_user_id = user_id[1:]
+
+    char_id, response = ModuleMessageController.require_char_id(message_controller, params, "char_id", plain_user_id, response)
+    if char_id is None:
+        return response
+
+    character_persistent_class = message_controller.character_persistent_class  # type: ModuleCharacterPersistentClass
+    char_stats_db = character_persistent_class.get_char_stats(plain_user_id, char_id)
+    stats = CharacterStats(char_stats_db) if char_stats_db is not None else CharacterStats.init_empty(plain_user_id, char_id)
+
+    response.add_response_message(stats.gen_stat_message("de"))
+    response.set_suggestions([message_controller.generate_text_user_char("Anzeigen", plain_user_id, char_id, response.get_orig_message())])
+    return response
+
 

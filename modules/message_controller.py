@@ -20,7 +20,8 @@ class MessageParam:
     CONST_REGEX_COMMAND = r"\S+"
     CONST_REGEX_TEXT = r".+"
 
-    def __init__(self, name, regex, required=False):
+    def __init__(self, name, regex, required=False, validate_in_message=False):
+        self.validate_in_message = validate_in_message
         self.name = name
         self.regex = regex
         self.required = required
@@ -29,7 +30,7 @@ class MessageParam:
         return r"(?P<{name}>{regex}){req}".format(
             name=self.name,
             regex=self.regex,
-            req="" if self.required is True else "?"
+            req="" if self.required is True and self.validate_in_message is False else "?"
         )
 
     def get_help_desc(self):
@@ -41,10 +42,10 @@ class MessageParam:
         return self.name
 
     @staticmethod
-    def init_selection(name, selection: list, required=False):
+    def init_selection(name, selection: list, required=False, validate_in_message=False):
         return MessageParam(name, r"({})".format(
             "|".join([re.escape(str(x).lower()) for x in selection])
-        ), required)
+        ), required, validate_in_message)
 
 
 class MessageCommand:
@@ -114,8 +115,103 @@ class MessageCommand:
                 ))
                 return response_messages, user_command_status, user_command_status_data
 
-            return func(controller, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user, match.groupdict(), self)
+            response_texts = []
+            suggestions = []
+            for response_message in response_messages: # type: TextMessage
+                response_texts.append(response_message.body)
+                if len(response_message.keyboards) > 0:
+                    suggestions = [keyboard.body for keyboard in response_message.keyboards[0].reponses]
+                else:
+                    suggestions = []
+
+            message_response = CommandMessageResponse(
+                controller,  # message_controller,
+                message,  # orig_message,
+                response_texts,  # response_messages,
+                user_command_status,  # user_command_status,
+                user_command_status_data,  # user_command_status_data,
+                user,  # user,
+                match.groupdict(),  # params,
+                self,  # command,
+                suggestions=suggestions,
+                forced_message=message_body_c
+            )
+
+            response = func(message_response) # type: CommandMessageResponse
+            response_messages = response.get_kik_response()
+            user_command_status, user_command_status_data = response.get_user_command_status()
+            return response_messages, user_command_status, user_command_status_data
         return method
+
+
+class MessageResponse:
+
+    def __init__(self, message_controller, orig_message: TextMessage, response_messages: list, user_command_status, user_command_status_data, user: User, suggestions=None,
+                 forced_message=None):
+        self.suggestions = [] if suggestions is None else suggestions
+        self.user = user
+        self.user_command_status_data = user_command_status_data
+        self.user_command_status = user_command_status
+        self.response_messages = response_messages
+        self.orig_message = orig_message
+        self.message_controller = message_controller
+        self.forced_message = forced_message
+
+    def get_user(self):
+        return self.user
+
+    def get_user_command_status(self):
+        return self.user_command_status, self.user_command_status_data
+
+    def get_response_messages(self):
+        return self.response_messages
+
+    def get_orig_message(self):
+        return self.orig_message
+
+    def get_message_controller(self):
+        return self.message_controller
+
+    def get_message_body(self):
+        return self.forced_message
+
+    def add_response_message(self, message: str):
+        self.response_messages.append(message)
+
+    def set_suggestions(self, suggestions: list):
+        self.suggestions = suggestions
+
+    def get_kik_response(self):
+        kik_responses = []
+        num_resp = len(self.response_messages)
+        for r in range(0, num_resp):
+            message_dict = {
+                "to":  self.orig_message.from_user,
+                "chat_id": self.orig_message.chat_id,
+                "body": self.response_messages[r],
+            }
+            if r == num_resp-1 and len(self.suggestions) != 0:
+                message_dict["keyboards"] = [SuggestedResponseKeyboard(responses=[MessageController.generate_text_response(keyboard) for keyboard in self.suggestions])]
+            kik_responses.append(TextMessage(**message_dict))
+        return kik_responses
+
+
+class CommandMessageResponse(MessageResponse):
+
+    def __init__(self, message_controller, orig_message: TextMessage, response_messages: list, user_command_status, user_command_status_data, user: User, params: dict,
+                 command: MessageCommand, suggestions=None, forced_message=None):
+        MessageResponse.__init__(self, message_controller, orig_message, response_messages, user_command_status, user_command_status_data, user, suggestions, forced_message)
+        self.params = params
+        self.command = command
+
+    def get_params(self):
+        return self.params
+
+    def get_param(self, key):
+        return self.get_params()[key]
+
+    def get_command(self):
+        return self.command
 
 
 class MessageController:
@@ -1344,40 +1440,34 @@ template_command = MessageCommand([
 ], "Vorlage", "template", ["Charaktervorlage", "boilerplate", "draft", "Steckbriefvorlage", "Stecki"])
 
 @MessageController.add_method(template_command)
-def msg_cmd_template(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User, params: dict, command):
-    response_messages.append(TextMessage(
-        to=message.from_user,
-        chat_id=message.chat_id,
-        body=_(
-            "Die folgende Charaktervorlage kann genutzt werden um einen neuen Charakter im RPG zu erstellen.\n"
-            "Dies ist eine notwendige Voraussetung um am RPG teilnehmen zu können.\n"
-            "Bitte poste diese Vorlage ausgefüllt im Gruppenchannel #{kik_group_id}\n"
-            "Wichtig: Bitte lasse die Schlüsselwörter (Vorname:, Nachname:, etc.) stehen.\n"
-            "Möchtest du die Vorlage nicht über den Bot speichern, dann entferne bitte die erste Zeile.\n"
-            "Hast du bereits einen Charakter und möchtest diesen aktualisieren, dann schreibe in der ersten Zeile '{change_command}' anstatt '{add_command}'"
-        ).format(
-            kik_group_id=self.config.get("KikGroup", "somegroup"),
+def msg_cmd_template(response: CommandMessageResponse):
+    message_controller = response.get_message_controller()
+    params = response.get_params()
+
+    response.add_response_message(_(
+        "Die folgende Charaktervorlage kann genutzt werden um einen neuen Charakter im RPG zu erstellen.\n"
+        "Dies ist eine notwendige Voraussetung um am RPG teilnehmen zu können.\n"
+        "Bitte poste diese Vorlage ausgefüllt im Gruppenchannel #{kik_group_id}\n"
+        "Wichtig: Bitte lasse die Schlüsselwörter (Vorname:, Nachname:, etc.) stehen.\n"
+        "Möchtest du die Vorlage nicht über den Bot speichern, dann entferne bitte die erste Zeile.\n"
+        "Hast du bereits einen Charakter und möchtest diesen aktualisieren, dann schreibe in der ersten Zeile '{change_command}' anstatt '{add_command}'"
+    ).format(
+        kik_group_id=message_controller.config.get("KikGroup", "somegroup"),
+        add_command=MessageController.get_command_text("Hinzufügen", 'de'),
+        change_command=MessageController.get_command_text("Ändern", 'de'),
+    ))
+
+    template_message = message_controller.character_persistent_class.get_static_message('nur-vorlage')
+
+    response.add_response_message(
+        "@{bot_username} {add_command} {user_id_wa}\n".format(
+            bot_username=message_controller.bot_username,
             add_command=MessageController.get_command_text("Hinzufügen", 'de'),
-            change_command=MessageController.get_command_text("Ändern", 'de'),
-        ),
-        keyboards=[SuggestedResponseKeyboard(responses=[MessageController.generate_text_response("Hilfe"), MessageController.generate_text_response("Weitere-Beispiele")])]
-    ))
-
-    template_message = self.character_persistent_class.get_static_message('nur-vorlage')
-
-    response_messages.append(TextMessage(
-        to=message.from_user,
-        chat_id=message.chat_id,
-        body=(
-                "@{bot_username} {add_command} {user_id_wa}\n".format(
-                    bot_username=self.bot_username,
-                    add_command=MessageController.get_command_text("Hinzufügen", 'de'),
-                    user_id_wa=params["user_id"] if params["user_id"] is not None else ""
-                ) + template_message["response"]
-        ),
-        keyboards=[SuggestedResponseKeyboard(responses=[MessageController.generate_text_response("Hilfe"), MessageController.generate_text_response("Weitere-Beispiele")])]
-    ))
-    return response_messages, user_command_status, user_command_status_data
+            user_id_wa=params["user_id"] if params["user_id"] is not None else ""
+        ) + template_message["response"]
+    )
+    response.set_suggestions(["Hilfe", "Weitere-Beispiele"])
+    return response
 
 
 #
