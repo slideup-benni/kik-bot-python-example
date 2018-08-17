@@ -125,7 +125,6 @@ class MessageController:
         self.config = self.read_config(config_file)
         self.bot_username = bot_username
         self.character_persistent_class = CharacterPersistentClass(self.config)
-        pass
 
     @staticmethod
     def read_config(config_file):

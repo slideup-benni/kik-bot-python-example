@@ -23,6 +23,7 @@ language governing permissions and limitations under the License.
 """
 import configparser
 import hashlib
+import importlib.util
 import json
 import os
 import time
@@ -64,7 +65,11 @@ def incoming():
     messages = messages_from_json(request.json["messages"])
 
     response_messages = []
-    message_controller = MessageController(bot_username, config_file)
+
+    if custom_module is not None and hasattr(custom_module, "ModuleMessageController"):
+        message_controller = custom_module.ModuleMessageController(bot_username, config_file)
+    else:
+        message_controller = MessageController(bot_username, config_file)
 
     for message in messages:
         try:
@@ -138,11 +143,34 @@ print("Using conf {}.".format(config_file))
 config = configparser.ConfigParser()
 config.read(config_file)
 default_config = config['DEFAULT'] # type: SectionProxy
-bot_username = default_config.get("BotUsername", "botname")
-print("Bot Username: {}".format(bot_username))
+bot_username = default_config.get("BotUsername", "botname").strip()
+print("[{bot_username}] Bot Username: {bot_username}".format(
+    bot_username=bot_username
+))
+
+custom_module_name = default_config.get("CustomModule", "False")
+custom_module = None
+if custom_module_name is not False and str(custom_module_name).lower() != "false":
+    custom_module_name = str(custom_module_name).strip()
+    custom_spec = importlib.util.find_spec("custom_modules.{}".format(custom_module_name))
+    if custom_spec is not None:
+        custom_module = importlib.util.module_from_spec(custom_spec)
+        custom_spec.loader.exec_module(custom_module)
+        print("[{bot_username}] Loaded custom module: custom_modules.{custom_module}".format(
+            custom_module=custom_module_name,
+            bot_username=bot_username
+        ))
+    else:
+        print("[{bot_username}] Could not load custom module: custom_modules.{custom_module} ... - ignoring".format(
+            custom_module=custom_module_name,
+            bot_username=bot_username
+        ))
 
 # prepare database
-db_class = CharacterPersistentClass(default_config)
+if custom_module is not None and hasattr(custom_module, "ModuleCharacterPersistentClass"):
+    db_class = custom_module.ModuleCharacterPersistentClass(default_config)
+else:
+    db_class = CharacterPersistentClass(default_config)
 del db_class
 
 kik_api = KikApi(bot_username, default_config.get("BotAuthCode", "abcdef01-2345-6789-abcd-ef0123456789"))

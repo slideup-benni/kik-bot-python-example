@@ -3,6 +3,7 @@ daemon/log/main/*
 daemon/log/supervise
 daemon/supervise
 daemon/down
+custom_modules/*
 pictures/*
 .idea
 /*.ini
@@ -10,5 +11,6 @@ __pycache__
 venv
 
 !daemon/log/main/.gitkeep
+!custom_modules/.gitkeep
 !pictures/.gitkeep
 !/_config.ini

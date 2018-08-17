@@ -382,7 +382,7 @@ class CharacterPersistentClass:
         chars = []
 
         for char in chars_raw:
-            if re.search(r".*?{}(.*?):[^a-z]*?{}[^a-z]*?".format(re.escape(query_key), re.escape(query)), char['text'], re.MULTILINE + re.IGNORECASE) is not None:
+            if re.search(r".*?{}(.*?):[^a-z]*?{}[^a-z]*?".format(re.escape(query_key), re.escape(query)), char['text'], re.MULTILINE | re.IGNORECASE) is not None:
                 chars.append(char)
 
         return chars
