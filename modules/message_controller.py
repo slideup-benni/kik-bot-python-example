@@ -746,10 +746,10 @@ class MessageController:
         return MessageController.methods[command_id]['cmds']
 
     @staticmethod
-    def get_command_text(command, lang):
-        command = MessageController.get_command(command)
+    def get_command_text(command_str, lang):
+        command = MessageController.get_command(command_str)
         if command is None:
-            return str(command).strip()
+            return str(command_str).strip()
 
         try:
             return command[lang]
