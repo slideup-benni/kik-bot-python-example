@@ -19,7 +19,7 @@
     </div>
 {% endfor %}
 {% for keyboard in keyboards %}
-    <div class="keyboard" onclick="document.getElementById('message_body').value=this.innerHTML">{{ keyboard.body }}</div>
+    <div class="keyboard">{{ keyboard.body }}</div>
 {% endfor %}
 <form method=post>
   <dl>
