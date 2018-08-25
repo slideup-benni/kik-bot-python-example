@@ -1,0 +1,75 @@
+.message_bubble {
+    max-width: 400px;
+    padding: 10px;
+    border: 1px solid gray;
+    border-radius: 8px;
+    margin-bottom: 10px;
+    position: relative;
+}
+.keyboard {
+    max-width: 406px;
+    padding: 7px;
+    border: 1px solid gray;
+    border-radius: 8px;
+    margin-bottom: 5px;
+    background: lightgoldenrodyellow;
+    white-space: nowrap;
+    overflow: hidden;
+    cursor: pointer;
+}
+.message_json {
+    display: none;
+    position: absolute;
+    background: white;
+    top: 0px;
+    left: 100%;
+    padding: 10px;
+    font-size: 0.8em;
+    border: 1px solid;
+    width: 600px;
+    overflow: auto;
+}
+.message_bubble:hover .message_json {
+    display: block;
+}
+.keyboard:hover {
+    background: yellow;
+}
+p:first-child {
+    margin-top: 0;
+}
+p:last-child {
+    margin-bottom: 0;
+}
+img {
+    width: 100%;
+}
+form {
+    max-width: 400px;
+    background: lightgray;
+    padding: 10px;
+    border-top: 2px dashed;
+    margin-top: 20px;
+}
+dd {
+    margin: 0 0 20px;
+}
+dd > textarea,
+dd > input,
+dd > select {
+    width: 100%;
+    padding: 5px;
+}
+dt {
+    margin-bottom: 5px;
+}
+
+textarea {
+    height: 80px;
+}
+
+input[type=submit] {
+    padding: 5px 30px;
+    margin: auto;
+    display: block;
+}

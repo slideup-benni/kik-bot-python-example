@@ -1,0 +1,31 @@
+{% from "_formhelpers.html" import render_field %}
+<link rel="stylesheet" type="text/css" href="../static/styles.css">
+<link rel="terms" href="path/to/terms/of/use.html">
+<link rel="privacy" href="path/to/privacy/policy.html">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<script type="text/javascript" src="https://code.jquery.com/jquery-3.3.1.min.js"></script>
+<script type="text/javascript" src="https://cdn.kik.com/kik/2.3.7/kik.js"></script>
+<script type="text/javascript" src="../static/common.js"></script>
+
+{% for message in messages %}
+    <div class="message_bubble">
+        {% if message|attr("pic_url") %}
+        <img src="{{ message.pic_url }}" />
+        {% endif %}
+        {% if message|attr("body") %}
+        {{ message.body|nl2br }}
+        {% endif %}
+        <div class="message_json"><pre>{{ message|json_recursive }}</pre></div>
+    </div>
+{% endfor %}
+{% for keyboard in keyboards %}
+    <div class="keyboard" onclick="document.getElementById('message_body').value=this.innerHTML">{{ keyboard.body }}</div>
+{% endfor %}
+<form method=post>
+  <dl>
+    {{ render_field(form.message_body) }}
+    {{ render_field(form.message_from_user) }}
+    {{ render_field(form.message_type) }}
+  </dl>
+  <p><input type=submit value=Submit>
+</form>

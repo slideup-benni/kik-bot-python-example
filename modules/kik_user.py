@@ -5,7 +5,11 @@ from kik import User as KikUser, KikApi, KikError
 
 
 class User:
-    pass
+    def __getitem__(self, item):
+        return ""
+
+    def __getattr__(self, item):
+        return ""
 
 
 class LazyKikUser(User):

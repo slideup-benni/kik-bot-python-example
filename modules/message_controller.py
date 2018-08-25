@@ -20,14 +20,20 @@ class MessageParam:
     CONST_REGEX_COMMAND = r"\S+"
     CONST_REGEX_TEXT = r".+"
 
-    def __init__(self, name, regex, required=False, validate_in_message=False):
+    def __init__(self, name, regex, required=False, validate_in_message=False, examples=None, get_value_callback=None):
+        self.get_value_callback = get_value_callback
         self.validate_in_message = validate_in_message
-        self.name = name
+        self.name = name.strip()
         self.regex = regex
         self.required = required
+        self.examples = examples if examples is not None else []
 
-    def get_regex(self):
-        return r"(?P<{name}>{regex}){req}".format(
+    def get_regex(self, is_first=False):
+        if is_first is True:
+            regex = r"(?P<{name}>{regex}){req}"
+        else:
+            regex = r"(\s+(?P<{name}>{regex})){req}"
+        return regex.format(
             name=self.name,
             regex=self.regex,
             req="" if self.required is True and self.validate_in_message is False else "?"
@@ -41,11 +47,98 @@ class MessageParam:
     def get_name(self):
         return self.name
 
+    def get_random_example(self, response):
+        if callable(self.examples):
+            return self.examples(response)
+
+        return random.choice(self.examples)
+
+    def is_required(self):
+        return self.required
+
+    def get_value(self, params):
+
+        if callable(self.get_value_callback):
+            return self.get_value_callback(self.name, params)
+
+        return params[self.name]
+
     @staticmethod
-    def init_selection(name, selection: list, required=False, validate_in_message=False):
+    def init_selection(name, selection: list, required=False, validate_in_message=False, examples=None):
         return MessageParam(name, r"({})".format(
             "|".join([re.escape(str(x).lower()) for x in selection])
-        ), required, validate_in_message)
+        ), required, validate_in_message, examples=selection if examples is None else examples)
+
+    @staticmethod
+    def init_user_id(name="user_id", required=False, validate_in_message=False, examples=None):
+        return MessageParam(name, MessageParam.CONST_REGEX_USER_ID, required=required, validate_in_message=validate_in_message,
+                            examples=MessageParam.random_user if examples is None else examples)
+
+    @staticmethod
+    def init_char_id(name="char_id", required=False, validate_in_message=False, examples=None):
+        return MessageParam(name, MessageParam.CONST_REGEX_USER_ID, required=required, validate_in_message=validate_in_message,
+                            examples=range(1, 4) if examples is None else examples)
+
+    @staticmethod
+    def init_duration_minutes(name="duration", required=False, validate_in_message=False, examples=None):
+
+        name = name.strip()
+
+        min_regex = r"(?P<{name}_mins_{cnt}>\d+)\s*(m|min)"
+        min_dec = r"[\.,](?P<{name}_hours_dec>\d+)"
+        min_colon = r":((?P<{name}_mins_1>\d{{1,2}})"
+        hours = r"(?P<{name}_hours>\d+)(\s*(h|std))?"
+
+        regex = r"({hours}(({min_int_1})|({min_dec})|(\s+{min_int_2})))?)|({min_int_3})".format(
+            hours=hours.format(name=name),
+            min_int_1=min_colon.format(name=name),
+            min_dec=min_dec.format(name=name),
+            min_int_2=min_regex.format(name=name, cnt=2),
+            min_int_3=min_regex.format(name=name, cnt=3)
+        )
+
+        examples = ["3:12", "14:22", "12:0", "0:22", "8:00", "3h 25min", "3 25min", "3min", "3h 25min", "3h 25 min", "325min", "3", "3h", "322h", "0", "0h", "0:0", "325h", "1,23",
+                    "2,2", "3,5", "1,33333", "1.23", "2.2", "3.5", "1.3333"] if examples is None else examples
+
+        def get_value_cb(name, param_values):
+            minutes = 0
+            none = True
+
+            if name + "_mins_1" in param_values and param_values[name + "_mins_1"] is not None:
+                minutes += int(param_values[name + "_mins_1"])
+                none=False
+
+            if name + "_mins_2" in param_values and param_values[name + "_mins_2"] is not None:
+                minutes += int(param_values[name + "_mins_2"])
+                none = False
+
+            if name + "_mins_3" in param_values and param_values[name + "_mins_3"] is not None:
+                minutes += int(param_values[name + "_mins_3"])
+                none = False
+
+            if name + "_hours_dec" in param_values and param_values[name + "_hours_dec"] is not None:
+                minutes += round(float("0." + param_values[name + "_hours_dec"]) * 60)
+                none = False
+
+            if name + "_hours" in param_values and param_values[name + "_hours"] is not None:
+                minutes += int(param_values[name + "_hours"]) * 60
+                none = False
+
+            return minutes if none is False else None
+
+        return MessageParam(name, regex, required=required, validate_in_message=validate_in_message,
+                            examples=examples, get_value_callback=get_value_cb)
+
+    @staticmethod
+    def random_user(response):
+        """
+
+        :type response: CommandMessageResponse
+        """
+        users = set(["@" + u.strip() for u in response.get_message_controller().get_config().get("Admins", "admin1").split(',')])
+        users.add(response.get_user().id)
+        print(list(users))
+        return random.choice(list(users))
 
 
 class MessageCommand:
@@ -58,8 +151,12 @@ class MessageCommand:
             '_alts': [] if command_alts is None else command_alts
         }
 
+        all_commands = set(self.command["_alts"])
+        all_commands.add(command_de)
+        all_commands.add(command_en)
+
         self.params = [
-            MessageParam("command", MessageParam.CONST_REGEX_COMMAND, required=True)
+            MessageParam("command", MessageParam.CONST_REGEX_COMMAND, required=True, examples=list(all_commands))
         ]
         self.params.extend(params)
 
@@ -67,9 +164,18 @@ class MessageCommand:
         self.params.append(param)
 
     def get_regex(self):
-        return r"^\s*{}\s*$".format(
-            "\s*".join([x.get_regex() for x in self.params])
-        )
+        base_regex = ""
+        for i in range(0,len(self.params)):
+            base_regex += self.params[i].get_regex(base_regex == "")
+
+        return r"^\s*{}\s*$".format(base_regex)
+
+    def get_command(self, message_string):
+        regex = re.compile(r"^\s*{}.*$".format(self.params[0].get_regex(True)), re.IGNORECASE | re.MULTILINE)
+        match = regex.match(message_string.strip())
+        if match is None:
+            return ""
+        return match.group("command")
 
     def get_help_desc(self, lang):
         help_desc = self.command[lang] if lang in self.command else self.command["de"]
@@ -78,12 +184,56 @@ class MessageCommand:
         return help_desc
 
     def get_example(self, params: dict, lang):
-        example_str = params["command"] if "command" in params else (self.command[lang] if lang in self.command else self.command["de"])
+        example_str = params["command"] if "command" in params and params["command"] is not None else (self.command[lang] if lang in self.command else self.command["de"])
         for x in self.params[1:]:
             name = x.get_name()
             if name in params and params[name] is not None:
                 example_str += " " + str(params[name])
         return example_str
+
+    def get_random_example(self, response, fixed_params=None):
+        """
+
+        :type response: CommandMessageResponse
+        :type fixed_params: dict
+        """
+        example_str = ""
+        for param in self.params:
+            if fixed_params is not None and param.get_name() in fixed_params and fixed_params[param.get_name()] is not None:
+                example_str += " " + str(fixed_params[param.get_name()])
+            elif param.is_required() or random.randint(0,1) == 0:
+                example_str += " " + str(param.get_random_example(response))
+
+        return example_str.strip()
+
+    def get_random_example_text(self, count, response, fixed_params=None):
+
+        examples = set()
+        for i in range(0, count*10):
+            examples.add(self.get_random_example(response, fixed_params))
+            if len(examples) == count:
+                break
+
+        count = len(examples)
+
+        cnt_str = {
+            2: _("zwei"),
+            3: _("drei"),
+            4: _("vier"),
+            5: _("fünf"),
+            10: _("zehn"),
+            11: _("elf"),
+            12: _("zwölf")
+        }
+
+        if count == 1:
+            string = _("ein zufälliges Beispiel")
+        else:
+            string = _("{count} zufällige Beispiele").format(
+                count=count if count not in cnt_str else cnt_str[count]
+            )
+
+        return string + ":\n" + "\n".join(examples)
 
     def __getitem__(self, item):
         return self.command[item]
@@ -91,21 +241,54 @@ class MessageCommand:
     def items(self):
         return self.command.items()
 
+    def get_values(self, params):
+        values = {}
+        for param in self.params:
+            values[param.get_name()] = param.get_value(params)
+        return values
+
     def get_method(self, func):
 
         def method(controller, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User):
 
+            response_texts = []
+            suggestions = []
+            for response_message in response_messages:  # type: TextMessage
+                response_texts.append(response_message.body)
+                if len(response_message.keyboards) > 0:
+                    suggestions = [keyboard.body for keyboard in response_message.keyboards[0].reponses]
+                else:
+                    suggestions = []
+
+            command_message_response_data = {
+                "message_controller":       controller,  # message_controller,
+                "orig_message":             message,  # orig_message,
+                "response_messages":        response_texts,  # response_messages,
+                "user_command_status":      user_command_status,  # user_command_status,
+                "user_command_status_data": user_command_status_data,  # user_command_status_data,
+                "user":                     user,  # user,
+                "params":                   [],  # params,
+                "command":                  self,  # command,
+                "suggestions":              suggestions,
+                "forced_message":           message_body_c
+            }
+
             regex = re.compile(self.get_regex(), re.IGNORECASE | re.MULTILINE)
             match = regex.match(message_body_c.strip())
             if match is None:
+                params_ = {i: x for i, x in enumerate(self.params)}
+                params_["command"] = self.get_command(message_body_c)
+                command_message_response = CommandMessageResponse(**{**command_message_response_data, "params": params_})
                 response_messages.append(TextMessage(
                     to=message.from_user,
                     chat_id=message.chat_id,
                     body=_("Fehler beim Aufruf des Befehls.\n\n"
                            "Die Struktur des Befehls sieht wie folgt aus:\n"
                            "{command_structure}\n\n"
+                           "{examples_3}\n\n"
                            "Für weitere Beispiele siehe '{help_command}'.").format(
                         command_structure=self.get_help_desc("de"),
+                        examples_3=self.get_random_example_text(3, command_message_response, params_),
                         help_command="{} {}".format(MessageController.get_command_text("Hilfe", 'de'), self.command["de"])
                     ),
                     keyboards=[SuggestedResponseKeyboard(responses=[
@@ -115,28 +298,7 @@ class MessageCommand:
                 ))
                 return response_messages, user_command_status, user_command_status_data
 
-            response_texts = []
-            suggestions = []
-            for response_message in response_messages: # type: TextMessage
-                response_texts.append(response_message.body)
-                if len(response_message.keyboards) > 0:
-                    suggestions = [keyboard.body for keyboard in response_message.keyboards[0].reponses]
-                else:
-                    suggestions = []
-
-            message_response = CommandMessageResponse(
-                controller,  # message_controller,
-                message,  # orig_message,
-                response_texts,  # response_messages,
-                user_command_status,  # user_command_status,
-                user_command_status_data,  # user_command_status_data,
-                user,  # user,
-                match.groupdict(),  # params,
-                self,  # command,
-                suggestions=suggestions,
-                forced_message=message_body_c
-            )
-
+            message_response = CommandMessageResponse(**{**command_message_response_data, "params": match.groupdict()})
             response = func(message_response) # type: CommandMessageResponse
             response_messages = response.get_kik_response()
             user_command_status, user_command_status_data = response.get_user_command_status()
@@ -149,16 +311,16 @@ class MessageResponse:
     def __init__(self, message_controller, orig_message: TextMessage, response_messages: list, user_command_status, user_command_status_data, user: User, suggestions=None,
                  forced_message=None):
         self.suggestions = [] if suggestions is None else suggestions
-        self.user = user
+        self.user = user  # type: User
         self.user_command_status_data = user_command_status_data
         self.user_command_status = user_command_status
         self.response_messages = response_messages
         self.orig_message = orig_message
-        self.message_controller = message_controller
+        self.message_controller = message_controller  # type: MessageController
         self.forced_message = forced_message
 
     def get_user(self):
-        return self.user
+        return self.user  #type: User
 
     def get_user_command_status(self):
         return self.user_command_status, self.user_command_status_data
@@ -177,6 +339,10 @@ class MessageResponse:
 
     def add_response_message(self, message: str):
         self.response_messages.append(message)
+
+    def add_response_messages(self, messages: list):
+        for message in messages:
+            self.add_response_message(message)
 
     def set_suggestions(self, suggestions: list):
         self.suggestions = suggestions
@@ -202,6 +368,7 @@ class CommandMessageResponse(MessageResponse):
                  command: MessageCommand, suggestions=None, forced_message=None):
         MessageResponse.__init__(self, message_controller, orig_message, response_messages, user_command_status, user_command_status_data, user, suggestions, forced_message)
         self.params = params
+        self.values = None
         self.command = command
 
     def get_params(self):
@@ -209,6 +376,14 @@ class CommandMessageResponse(MessageResponse):
 
     def get_param(self, key):
         return self.get_params()[key]
+
+    def get_values(self):
+        if self.values is None:
+            self.values = self.get_command().get_values(self.get_params())
+        return self.values
+
+    def get_value(self, key):
+        return self.get_values()[key]
 
     def get_command(self):
         return self.command
@@ -563,15 +738,23 @@ class MessageController:
         return none_func
 
     @staticmethod
-    def get_command_text(command, lang):
+    def get_command(command):
         command_id = MessageController.get_command_id(command)
         if command_id is None:
+            return None
+
+        return MessageController.methods[command_id]['cmds']
+
+    @staticmethod
+    def get_command_text(command, lang):
+        command = MessageController.get_command(command)
+        if command is None:
             return str(command).strip()
 
         try:
-            return MessageController.methods[command_id]['cmds'][lang]
+            return command[lang]
         except KeyError:
-            return MessageController.methods[command_id]['cmds']['de']
+            return command['de']
 
     @staticmethod
     def add_method(commands):
@@ -1436,7 +1619,7 @@ def msg_cmd_list(self, message, message_body, message_body_c, response_messages,
 # Befehl Vorlage
 #
 template_command = MessageCommand([
-    MessageParam("user_id", MessageParam.CONST_REGEX_USER_ID, False),
+    MessageParam.init_user_id(),
 ], "Vorlage", "template", ["Charaktervorlage", "boilerplate", "draft", "Steckbriefvorlage", "Stecki"])
 
 @MessageController.add_method(template_command)

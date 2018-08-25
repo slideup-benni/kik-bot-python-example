@@ -17,7 +17,7 @@ class CharacterPersistentClass:
 
     def __init__(self, config):
         self.connection = None
-        self.cursor = None
+        self.cursor = None  # type: sqlite3.Cursor
         self.config = config
         self.database_path = CharacterPersistentClass.get_database_path_from_config(config)
 
