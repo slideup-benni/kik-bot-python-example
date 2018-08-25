@@ -197,8 +197,9 @@ def debug():
 
     if request.method == 'POST' and form.validate():
 
-
         message = None
+        message_body = re.sub("^@{bot_username}\s*".format(bot_username=bot_username), "", form.message_body.data.strip())
+
 
         if form.message_type.data == "direct_bot":
             message = TextMessage(
@@ -214,7 +215,7 @@ def debug():
                 metadata=None,
                 keyboards=[],
                 chat_type='direct',
-                body=form.message_body.data,
+                body=message_body,
                 type_time=None
             )
         
@@ -232,7 +233,7 @@ def debug():
                 metadata=None,
                 keyboards=[],
                 chat_type='private',
-                body=form.message_body.data,
+                body=message_body,
                 type_time=None
             )
         
@@ -251,7 +252,7 @@ def debug():
                 metadata=None,
                 keyboards=[],
                 chat_type='private',
-                body=form.message_body.data,
+                body=message_body,
                 type_time=None
             )
         
@@ -279,7 +280,7 @@ def debug():
                 metadata=None,
                 keyboards=[],
                 chat_type='public',
-                body=form.message_body.data,
+                body=message_body,
                 type_time=None
             )
 
@@ -291,12 +292,17 @@ def debug():
                     response_messages = message_controller.process_message(message, user)
                     print(json.dumps(response_messages, default=lambda o: getattr(o, '__dict__', str(o)), indent=4, sort_keys=True))
             except:
-                response_messages = ["Message-Error: ({bot_username})\n---\nTrace: {trace}\n---\nReq: {request}".format(
-                    bot_username=bot_username,
-                    trace=traceback.format_exc(),
-                    request=json.dumps(message.__dict__, indent=4, sort_keys=True),
+                response_messages = [TextMessage(
+                    to=message.to,
+                    chat_id=message.chat_id,
+                    body="Message-Error: ({bot_username})\n---\nTrace: {trace}\n---\nReq: {request}".format(
+                        bot_username=bot_username,
+                        trace=traceback.format_exc(),
+                        request=json.dumps(message.__dict__, indent=4, sort_keys=True),
+                    ),
+                    keyboards=[SuggestedResponseKeyboard(responses=[MessageController.generate_text_response("Hilfe")])]
                 )]
-                print(response_messages[0])
+                print(response_messages[0].body)
 
     if len(response_messages) > 0 and len(response_messages[len(response_messages)-1].keyboards) > 0:
         keyboards = response_messages[len(response_messages)-1].keyboards[0].responses

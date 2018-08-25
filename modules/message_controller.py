@@ -143,7 +143,8 @@ class MessageParam:
 
 class MessageCommand:
 
-    def __init__(self, params: list, command_de, command_en, command_alts=None, help_command="Hilfe"):
+    def __init__(self, params: list, command_de, command_en, command_alts=None, help_command="Hilfe", hidden=False):
+        self.hidden = hidden
         self.help_command = help_command
         self.command = {
             'de': command_de,
@@ -460,23 +461,23 @@ class MessageController:
             #
             if message_body == u"\U00002B05\U0000FE0F":
                 status_obj = self.character_persistent_class.get_user_command_status(self.get_from_userid(message))
-                if status_obj['status'] == CharacterPersistentClass.STATUS_DYN_MESSAGES:
+                if status_obj['status'] == CharacterPersistentClass.STATUS_DYN_MESSAGES and 'left' in status_obj['data']:
                     message_body = status_obj['data']['left'].lower()
                     message_body_c = status_obj['data']['left']
 
             elif message_body == u"\U000027A1\U0000FE0F":
                 status_obj = self.character_persistent_class.get_user_command_status(self.get_from_userid(message))
-                if status_obj['status'] == CharacterPersistentClass.STATUS_DYN_MESSAGES:
+                if status_obj['status'] == CharacterPersistentClass.STATUS_DYN_MESSAGES and 'right' in status_obj['data']:
                     message_body = status_obj['data']['right'].lower()
                     message_body_c = status_obj['data']['right']
             elif message_body == u"\U0001F504":
                 status_obj = self.character_persistent_class.get_user_command_status(self.get_from_userid(message))
-                if status_obj['status'] == CharacterPersistentClass.STATUS_DYN_MESSAGES:
+                if status_obj['status'] == CharacterPersistentClass.STATUS_DYN_MESSAGES and 'redo' in status_obj['data']:
                     message_body = status_obj['data']['redo'].lower()
                     message_body_c = status_obj['data']['redo']
             elif message_body.strip()[0] == "@":
                 status_obj = self.character_persistent_class.get_user_command_status(self.get_from_userid(message))
-                if status_obj['status'] == CharacterPersistentClass.STATUS_DYN_MESSAGES:
+                if status_obj['status'] == CharacterPersistentClass.STATUS_DYN_MESSAGES and 'add_user_id' in status_obj['data']:
                     message_body = status_obj['data']['add_user_id'].lower().format(message_body.strip()[1:])
                     message_body_c = status_obj['data']['add_user_id'].format(message_body_c.strip()[1:])
 
@@ -1840,6 +1841,24 @@ def msg_cmd_roll(self, message: TextMessage, message_body, message_body_c, respo
     ))
     return response_messages, user_command_status, user_command_status_data
 
+
+debug_url_cmd = MessageCommand([], "Debug-URL", "debug-url", hidden=True)
+@MessageController.add_method(debug_url_cmd)
+def quest_status(response: CommandMessageResponse):
+
+    message_controller = response.get_message_controller()
+
+    log_requests = message_controller.get_config().get("LogRequests", "False")
+    if log_requests is not True and str(log_requests).lower() != "true":
+        response.add_response_message("Der Bot läuft derzeit nicht im Log-Request Modus. Debug URL deaktiviert.")
+    else:
+        response.add_response_message("Debug URL: {host}:{port}/debug".format(
+            bot_username=message_controller.bot_username,
+            host=message_controller.get_config().get("RemoteHostIP", "www.example.com"),
+            port=message_controller.get_config().get("RemotePort", "8080")
+        ))
+
+    return response
 
 #
 # Befehl statische Antwort / keine Antwort
