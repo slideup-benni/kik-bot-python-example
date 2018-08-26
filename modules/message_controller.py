@@ -84,21 +84,29 @@ class MessageParam:
 
         name = name.strip()
 
+        hour_unit = r"(\s*(h|std))"
         min_regex = r"(?P<{name}_mins_{cnt}>\d+)\s*(m|min)"
-        min_dec = r"[\.,](?P<{name}_hours_dec>\d+)"
-        min_colon = r":((?P<{name}_mins_1>\d{{1,2}})"
-        hours = r"(?P<{name}_hours>\d+)(\s*(h|std))?"
+        min_dec = r"[\.,](?P<{name}_hours_dec>\d+){hour_unit}?"
+        min_colon = r":(?P<{name}_mins_1>\d{{1,2}}){hour_unit}?"
+        hours = r"(?P<{name}_hours>\d+)"
 
-        regex = r"({hours}(({min_int_1})|({min_dec})|(\s+{min_int_2})))?)|({min_int_3})".format(
-            hours=hours.format(name=name),
-            min_int_1=min_colon.format(name=name),
-            min_dec=min_dec.format(name=name),
-            min_int_2=min_regex.format(name=name, cnt=2),
-            min_int_3=min_regex.format(name=name, cnt=3)
+        data = {
+            'name': name,
+            'hour_unit': hour_unit
+        }
+
+        regex = r"(({hours}(({min_int_1})|({min_dec})|({hour_unit})|({hour_unit}?\s+{min_int_2}))?)|({min_int_3}))".format(
+            hours=hours.format(**data),
+            min_int_1=min_colon.format(**data),
+            min_dec=min_dec.format(**data),
+            min_int_2=min_regex.format(**{**data, 'cnt':2}),
+            min_int_3=min_regex.format(**{**data, 'cnt':3}),
+            hour_unit=hour_unit
         )
 
-        examples = ["3:12", "14:22", "12:0", "0:22", "8:00", "3h 25min", "3 25min", "3min", "3h 25min", "3h 25 min", "325min", "3", "3h", "322h", "0", "0h", "0:0", "325h", "1,23",
-                    "2,2", "3,5", "1,33333", "1.23", "2.2", "3.5", "1.3333"] if examples is None else examples
+        examples = ["3:12", "14:22", "12:0", "0:22", "8:00", "3:12h", "14:22 h", "12:0h", "0:22h", "8:00h", "3h 25min", "3 25min", "3min", "3h 25min", "3h 25 min", "325min", "3",
+                    "3h", "322h", "0", "0h", "0:0", "325h", "1,23", "2,2", "3,5", "1,33333", "1.23", "2.2", "3.5", "1.3333", "1,23h", "2,2h", "3,5h", "1,33333h", "1.23 h", "2.2h",
+                    "3.5h", "1.3333 h"] if examples is None else examples
 
         def get_value_cb(name, param_values):
             minutes = 0
