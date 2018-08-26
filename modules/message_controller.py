@@ -5,7 +5,7 @@ import random
 import re
 import sqlite3
 
-from flask_babel import gettext as _
+from flask_babel import gettext as _, get_locale
 from kik.messages import Message, StartChattingMessage, TextMessage, SuggestedResponseKeyboard, PictureMessage
 from modules.character_persistent_class import CharacterPersistentClass
 from modules.kik_user import User, LazyKikUser, LazyRandomKikUser
@@ -137,7 +137,6 @@ class MessageParam:
         """
         users = set(["@" + u.strip() for u in response.get_message_controller().get_config().get("Admins", "admin1").split(',')])
         users.add(response.get_user().id)
-        print(list(users))
         return random.choice(list(users))
 
 
@@ -178,11 +177,18 @@ class MessageCommand:
             return ""
         return match.group("command")
 
-    def get_help_desc(self, lang):
+    def get_help_desc(self):
+        lang = get_locale().language
         help_desc = self.command[lang] if lang in self.command else self.command["de"]
         for x in self.params[1:]:
             help_desc += " " + x.get_help_desc()
         return help_desc
+
+    def get_command_loc(self):
+        lang = get_locale().language
+        if lang in self.command:
+            return self.command[lang]
+        return self.command["de"]
 
     def get_example(self, params: dict, lang):
         example_str = params["command"] if "command" in params and params["command"] is not None else (self.command[lang] if lang in self.command else self.command["de"])
@@ -288,12 +294,12 @@ class MessageCommand:
                            "{command_structure}\n\n"
                            "{examples_3}\n\n"
                            "Für weitere Beispiele siehe '{help_command}'.").format(
-                        command_structure=self.get_help_desc("de"),
+                        command_structure=self.get_help_desc(),
                         examples_3=self.get_random_example_text(3, command_message_response, params_),
-                        help_command="{} {}".format(MessageController.get_command_text("Hilfe", 'de'), self.command["de"])
+                        help_command="{} {}".format(MessageController.get_command_text("Hilfe"), self.get_command_loc())
                     ),
                     keyboards=[SuggestedResponseKeyboard(responses=[
-                        MessageController.generate_text_response("{} {}".format("Hilfe", self.command["de"])),
+                        MessageController.generate_text_response("{} {}".format("Hilfe", self.get_command_loc())),
                         MessageController.generate_text_response(self.help_command),
                     ])]
                 ))
@@ -426,7 +432,7 @@ class MessageController:
                        "Wenn du möchtest, kannst du hier auch @{bot_username} vor allen Befehlen weg lassen. "
                        "Probier es aus: Antworte mir einfach mit '{help_command}' und du bekommst eine Liste aller Befehle").format(
                     user=user,
-                    help_command=MessageController.get_command_text('Hilfe', 'de'),
+                    help_command=MessageController.get_command_text('Hilfe'),
                     bot_username=self.bot_username
                 ),
                 # keyboards are a great way to provide a menu of options for a user to respond with!
@@ -447,7 +453,7 @@ class MessageController:
                            ).format(
                         user=user,
                         kik_group_id=self.config.get("KikGroup", "somegroup"),
-                        help_command=MessageController.get_command_text('Hilfe', 'de')
+                        help_command=MessageController.get_command_text('Hilfe')
                     ),
                     keyboards=[SuggestedResponseKeyboard(responses=[
                         MessageController.generate_text_response("Hilfe"),
@@ -569,7 +575,7 @@ class MessageController:
         if force_command is True:
             return TextResponse(body)
         split = body.split(None, 1)
-        split[0] = MessageController.get_command_text(split[0], 'de')
+        split[0] = MessageController.get_command_text(split[0])
         return TextResponse(" ".join(split))
 
     @staticmethod
@@ -747,7 +753,8 @@ class MessageController:
         return MessageController.methods[command_id]['cmds']
 
     @staticmethod
-    def get_command_text(command_str, lang):
+    def get_command_text(command_str):
+        lang = get_locale().language
         command = MessageController.get_command(command_str)
         if command is None:
             return str(command_str).strip()
@@ -755,7 +762,7 @@ class MessageController:
         try:
             return command[lang]
         except KeyError:
-            return command['de']
+            return command["de"]
 
     @staticmethod
     def add_method(commands):
@@ -778,7 +785,7 @@ class MessageController:
             to=message.from_user,
             chat_id=message.chat_id,
             body=_("Fehler beim Aufruf des Befehls. Siehe '{help_command}'.").format(
-                help_command=MessageController.get_command_text(command, 'de')
+                help_command=MessageController.get_command_text(command)
             ),
             keyboards=[SuggestedResponseKeyboard(responses=[MessageController.generate_text_response(command)])]
         )
@@ -1360,7 +1367,7 @@ def msg_cmd_set_cmd_keyboards(self, message, message_body, message_body_c, respo
                         command=static_message["command"],
                         bot_username=self.bot_username,
                         curr_alt_cmd=example_alt_commands,
-                        set_cmd_alt_cmd_command=MessageController.get_command_text("Setze-Befehl-Alternative-Befehle", 'de')
+                        set_cmd_alt_cmd_command=MessageController.get_command_text("Setze-Befehl-Alternative-Befehle")
                     ),
                     keyboards=[SuggestedResponseKeyboard(
                         responses=[MessageController.generate_text_response(static_message['command']), MessageController.generate_text_response("Admin-Hilfe")])]
@@ -1412,7 +1419,7 @@ def msg_cmd_set_cmd_alt_cmd(self, message, message_body, message_body_c, respons
                         command=static_message["command"],
                         bot_username=self.bot_username,
                         curr_keyboards=example_keyboards,
-                        set_cmd_keyboards_command=MessageController.get_command_text("Setze-Befehl-Tastaturen", 'de'),
+                        set_cmd_keyboards_command=MessageController.get_command_text("Setze-Befehl-Tastaturen"),
                     ),
                     keyboards=[SuggestedResponseKeyboard(
                         responses=[MessageController.generate_text_response(static_message['command']), MessageController.generate_text_response("Admin-Hilfe")])]
@@ -1465,8 +1472,8 @@ def msg_cmd_set_command(self, message, message_body, message_body_c, response_me
                     bot_username=self.bot_username,
                     curr_keyboards=example_keyboards,
                     curr_alt_cmd=example_alt_commands,
-                    set_cmd_keyboards_command=MessageController.get_command_text("Setze-Befehl-Tastaturen", 'de'),
-                    set_cmd_alt_cmd_command=MessageController.get_command_text("Setze-Befehl-Alternative-Befehle", 'de')
+                    set_cmd_keyboards_command=MessageController.get_command_text("Setze-Befehl-Tastaturen"),
+                    set_cmd_alt_cmd_command=MessageController.get_command_text("Setze-Befehl-Alternative-Befehle")
                 ),
                 keyboards=[SuggestedResponseKeyboard(
                     responses=[MessageController.generate_text_response(static_message["command"]), MessageController.generate_text_response("Admin-Hilfe")])]
@@ -1637,8 +1644,8 @@ def msg_cmd_template(response: CommandMessageResponse):
         "Hast du bereits einen Charakter und möchtest diesen aktualisieren, dann schreibe in der ersten Zeile '{change_command}' anstatt '{add_command}'"
     ).format(
         kik_group_id=message_controller.config.get("KikGroup", "somegroup"),
-        add_command=MessageController.get_command_text("Hinzufügen", 'de'),
-        change_command=MessageController.get_command_text("Ändern", 'de'),
+        add_command=MessageController.get_command_text("Hinzufügen"),
+        change_command=MessageController.get_command_text("Ändern"),
     ))
 
     template_message = message_controller.character_persistent_class.get_static_message('nur-vorlage')
@@ -1646,7 +1653,7 @@ def msg_cmd_template(response: CommandMessageResponse):
     response.add_response_message(
         "@{bot_username} {add_command} {user_id_wa}\n".format(
             bot_username=message_controller.bot_username,
-            add_command=MessageController.get_command_text("Hinzufügen", 'de'),
+            add_command=MessageController.get_command_text("Hinzufügen"),
             user_id_wa=params["user_id"] if params["user_id"] is not None else ""
         ) + template_message["response"]
     )
@@ -1696,13 +1703,13 @@ def msg_cmd_more_examples(self, message, message_body, message_body_c, response_
         ).format(
             bot_username=self.bot_username,
             user_id=self.get_from_userid(message),
-            show_command=MessageController.get_command_text("Anzeigen", 'de'),
-            delete_command=MessageController.get_command_text("Löschen", 'de'),
-            list_command=MessageController.get_command_text("Liste", 'de'),
-            help_command=MessageController.get_command_text("Hilfe", 'de'),
-            dice_command=MessageController.get_command_text("Würfeln", 'de'),
-            add_command=MessageController.get_command_text("Hinzufügen", 'de'),
-            change_command=MessageController.get_command_text("Ändern", 'de'),
+            show_command=MessageController.get_command_text("Anzeigen"),
+            delete_command=MessageController.get_command_text("Löschen"),
+            list_command=MessageController.get_command_text("Liste"),
+            help_command=MessageController.get_command_text("Hilfe"),
+            dice_command=MessageController.get_command_text("Würfeln"),
+            add_command=MessageController.get_command_text("Hinzufügen"),
+            change_command=MessageController.get_command_text("Ändern"),
             number=7,
             admin_user=self.config.get("Admins", "admin1").split(',')[0].strip()
         ),

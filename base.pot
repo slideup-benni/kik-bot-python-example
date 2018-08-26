@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2018-08-17 10:18+0200\n"
+"POT-Creation-Date: 2018-08-20 22:57+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -27,17 +27,55 @@ msgid ""
 "Fehler-Informationen: {error_id}"
 msgstr ""
 
-#: modules/message_controller.py:103
+#: modules/message_controller.py:220
+msgid "zwei"
+msgstr ""
+
+#: modules/message_controller.py:221
+msgid "drei"
+msgstr ""
+
+#: modules/message_controller.py:222
+msgid "vier"
+msgstr ""
+
+#: modules/message_controller.py:223
+msgid "fünf"
+msgstr ""
+
+#: modules/message_controller.py:224
+msgid "zehn"
+msgstr ""
+
+#: modules/message_controller.py:225
+msgid "elf"
+msgstr ""
+
+#: modules/message_controller.py:226
+msgid "zwölf"
+msgstr ""
+
+#: modules/message_controller.py:230
+msgid "ein zufälliges Beispiel"
+msgstr ""
+
+#: modules/message_controller.py:232
+msgid "{count} zufällige Beispiele"
+msgstr ""
+
+#: modules/message_controller.py:285
 msgid ""
 "Fehler beim Aufruf des Befehls.\n"
 "\n"
 "Die Struktur des Befehls sieht wie folgt aus:\n"
 "{command_structure}\n"
 "\n"
+"{examples_3}\n"
+"\n"
 "Für weitere Beispiele siehe '{help_command}'."
 msgstr ""
 
-#: modules/message_controller.py:153
+#: modules/message_controller.py:424
 msgid ""
 "Hi {user[first_name]}, mit mir kann man auch direkt schreiben. Wenn du "
 "möchtest, kannst du hier auch @{bot_username} vor allen Befehlen weg "
@@ -45,40 +83,40 @@ msgid ""
 "bekommst eine Liste aller Befehle"
 msgstr ""
 
-#: modules/message_controller.py:173
+#: modules/message_controller.py:444
 msgid ""
 "Hi {user[first_name]}, ich bin der Steckbrief-Bot der Gruppe "
 "#{kik_group_id}\n"
 "Für weitere Informationen tippe auf Antwort und dann auf '{help_command}'."
 msgstr ""
 
-#: modules/message_controller.py:222 modules/message_controller.py:265
+#: modules/message_controller.py:493 modules/message_controller.py:536
 msgid "Sorry {user[first_name]}, ich habe dich nicht verstanden."
 msgstr ""
 
-#: modules/message_controller.py:231
+#: modules/message_controller.py:502
 msgid "Sorry {user[first_name]}, mit diesem Bild kann ich leider nichts anfangen."
 msgstr ""
 
-#: modules/message_controller.py:240
+#: modules/message_controller.py:511
 msgid ""
 "Alles klar! Das Bild wurde gesetzt. Bitte melde dich bei @{} damit das "
 "Bild bestätigt werden kann. Dies ist notwendig, da Kik eine Zero-"
 "Tolerance-Policy gegenüber evtl. anstößigen Bildern hat."
 msgstr ""
 
-#: modules/message_controller.py:244
+#: modules/message_controller.py:515
 msgid "Beim hochladen ist ein Fehler aufgetreten. Bitte versuche es erneut."
 msgstr ""
 
-#: modules/message_controller.py:312
+#: modules/message_controller.py:583
 msgid ""
 "Du bist nicht berechtigt diesen Befehl auszuführen!\n"
 "Bitte melde dich in der Gruppe #{kik_group_id} und erfrage eine "
 "Berechtigung."
 msgstr ""
 
-#: modules/message_controller.py:334
+#: modules/message_controller.py:605
 msgid ""
 "\n"
 "\n"
@@ -86,14 +124,14 @@ msgid ""
 "zum navigieren)"
 msgstr ""
 
-#: modules/message_controller.py:349
+#: modules/message_controller.py:620
 msgid ""
 "\n"
 "\n"
 "Charakter-Bilder müssen vor dem Anzeigen bestätigt werden."
 msgstr ""
 
-#: modules/message_controller.py:357
+#: modules/message_controller.py:628
 #, python-format
 msgid ""
 "{char_text}\n"
@@ -104,27 +142,27 @@ msgid ""
 "Erstellt am {created:%d.%m.%Y %H:%M}{appendix}"
 msgstr ""
 
-#: modules/message_controller.py:500
+#: modules/message_controller.py:771
 msgid "Fehler beim Aufruf des Befehls. Siehe '{help_command}'."
 msgstr ""
 
-#: modules/message_controller.py:522
+#: modules/message_controller.py:793
 msgid "Alles klar! Der erste Charakter für @{user_id} wurde hinzugefügt."
 msgstr ""
 
-#: modules/message_controller.py:524
+#: modules/message_controller.py:795
 msgid "Alles klar! Der {char_id}. Charakter für @{user_id} wurde hinzugefügt."
 msgstr ""
 
-#: modules/message_controller.py:542
+#: modules/message_controller.py:813
 msgid "Alles klar! Dein erster Charakter wurde hinzugefügt."
 msgstr ""
 
-#: modules/message_controller.py:544
+#: modules/message_controller.py:815
 msgid "Alles klar! Dein {char_id}. Charakter wurde hinzugefügt."
 msgstr ""
 
-#: modules/message_controller.py:546
+#: modules/message_controller.py:817
 msgid ""
 "Alles klar! Dein Charakter wurde hinzugefügt. \n"
 "Der Charakter wurde temporär dem Alias-User @{alias_user_id} zugeordnet.\n"
@@ -135,131 +173,131 @@ msgid ""
 "den folgenden Befehl (Bitte kopieren und deine Nutzer_Id ersetzen):"
 msgstr ""
 
-#: modules/message_controller.py:551
+#: modules/message_controller.py:822
 msgid "@{user_id} @Deine_Nutzer_Id"
 msgstr ""
 
-#: modules/message_controller.py:600
+#: modules/message_controller.py:871
 msgid "Alles klar! Der {char_id}. Charakter für @{user_id} wurde gespeichert."
 msgstr ""
 
-#: modules/message_controller.py:617
+#: modules/message_controller.py:888
 msgid "Alles klar! Dein {char_id}. Charakter wurde gespeichert."
 msgstr ""
 
-#: modules/message_controller.py:636
+#: modules/message_controller.py:907
 msgid "Alles klar! Der erste Charakter für @{user_id} wurde gespeichert."
 msgstr ""
 
-#: modules/message_controller.py:649
+#: modules/message_controller.py:920
 msgid "Alles klar! Dein erster Charakter wurde gespeichert."
 msgstr ""
 
-#: modules/message_controller.py:705
+#: modules/message_controller.py:976
 msgid "Alles Klar! Bitte schicke jetzt das Bild direkt an @{bot_username}"
 msgstr ""
 
-#: modules/message_controller.py:757
+#: modules/message_controller.py:1028
 msgid ""
 "Es wurde kein Charakter mit dem Namen {char_name} des Nutzers @{user_id} "
 "gefunden"
 msgstr ""
 
-#: modules/message_controller.py:771
+#: modules/message_controller.py:1042
 msgid ""
 "Es wurden {cnt} Charaktere mit dem Namen {char_name} des Nutzers "
 "@{user_id} gefunden"
 msgstr ""
 
-#: modules/message_controller.py:782
+#: modules/message_controller.py:1053
 msgid "Keine Daten zum {char_id}. Charakter des Nutzers @{user_id} gefunden"
 msgstr ""
 
-#: modules/message_controller.py:789
+#: modules/message_controller.py:1060
 msgid "Keine Daten zum Nutzer @{user_id} gefunden"
 msgstr ""
 
-#: modules/message_controller.py:818
+#: modules/message_controller.py:1089
 msgid ""
 "Du hast erfolgreich deinen {from_char_id}. Charakter auf @{to_user_id} "
 "({to_char_id}.) verschoben."
 msgstr ""
 
-#: modules/message_controller.py:824
+#: modules/message_controller.py:1095
 msgid ""
 "Du hast erfolgreich deinen Charakter auf @{to_user_id} ({to_char_id}.) "
 "verschoben."
 msgstr ""
 
-#: modules/message_controller.py:845
+#: modules/message_controller.py:1116
 msgid ""
 "Du hast erfolgreich den {from_char_id}. Charakter von @{from_user_id} auf"
 " @{to_user_id} ({to_char_id}.) verschoben."
 msgstr ""
 
-#: modules/message_controller.py:852
+#: modules/message_controller.py:1123
 msgid ""
 "Du hast erfolgreich den ersten Charakter von @{from_user_id} auf "
 "@{to_user_id} ({to_char_id}.) verschoben."
 msgstr ""
 
-#: modules/message_controller.py:872
+#: modules/message_controller.py:1143
 msgid "Du kannst keine Charaktere von anderen Nutzern verschieben."
 msgstr ""
 
-#: modules/message_controller.py:898
+#: modules/message_controller.py:1169
 msgid "Du hast erfolgreich deinen {char_id}. Charakter gelöscht"
 msgstr ""
 
-#: modules/message_controller.py:900
+#: modules/message_controller.py:1171
 msgid "Du hast erfolgreich deinen Charakter gelöscht."
 msgstr ""
 
-#: modules/message_controller.py:913
+#: modules/message_controller.py:1184
 msgid "Du hast erfolgreich den {char_id}. Charakter von @{user_id} gelöscht."
 msgstr ""
 
-#: modules/message_controller.py:915
+#: modules/message_controller.py:1186
 msgid "Du hast erfolgreich den ersten Charakter von @{user_id} gelöscht."
 msgstr ""
 
-#: modules/message_controller.py:928 modules/message_controller.py:990
+#: modules/message_controller.py:1199 modules/message_controller.py:1261
 msgid "Du kannst keine Charaktere von anderen Nutzern löschen."
 msgstr ""
 
-#: modules/message_controller.py:954
+#: modules/message_controller.py:1225
 msgid "Du hast erfolgreich die letzte Änderung am Charakter {char_id} gelöscht."
 msgstr ""
 
-#: modules/message_controller.py:956
+#: modules/message_controller.py:1227
 msgid "Du hast erfolgreich die letzte Änderung gelöscht."
 msgstr ""
 
-#: modules/message_controller.py:972
+#: modules/message_controller.py:1243
 msgid ""
 "Du hast erfolgreich die letzte Änderung des Charakters {char_id} von "
 "@{user_id} gelöscht."
 msgstr ""
 
-#: modules/message_controller.py:974
+#: modules/message_controller.py:1245
 msgid ""
 "Du hast erfolgreich die letzte Änderung des Charakters von @{user_id} "
 "gelöscht."
 msgstr ""
 
-#: modules/message_controller.py:1017
+#: modules/message_controller.py:1288
 msgid "Für die Suchanfrage wurden keine Charaktere gefunden."
 msgstr ""
 
-#: modules/message_controller.py:1036
+#: modules/message_controller.py:1307
 msgid "Es wurden mehrere Charaktere gefunden, die deiner Suchanfrage entsprechen."
 msgstr ""
 
-#: modules/message_controller.py:1062 modules/message_controller.py:1114
+#: modules/message_controller.py:1333 modules/message_controller.py:1385
 msgid "Der Befehl '{command}' existiert nicht."
 msgstr ""
 
-#: modules/message_controller.py:1077
+#: modules/message_controller.py:1348
 msgid ""
 "Du hast erfolgreich die Tastaturen für den statischen Befehl '{command}' "
 "aktualisiert.\n"
@@ -269,7 +307,7 @@ msgid ""
 "@{bot_username} {set_cmd_alt_cmd_command} {command} {curr_alt_cmd}"
 msgstr ""
 
-#: modules/message_controller.py:1129
+#: modules/message_controller.py:1400
 msgid ""
 "Du hast erfolgreich die alternativen Befehle für den Befehl '{command}' "
 "aktualisiert.\n"
@@ -279,11 +317,11 @@ msgid ""
 "@{bot_username} {set_cmd_keyboards_command} {command} {curr_keyboards}"
 msgstr ""
 
-#: modules/message_controller.py:1146 modules/message_controller.py:1200
+#: modules/message_controller.py:1417 modules/message_controller.py:1471
 msgid "Du kannst keine statischen Antworten setzen."
 msgstr ""
 
-#: modules/message_controller.py:1178
+#: modules/message_controller.py:1449
 msgid ""
 "Du hast erfolgreich die statische Antwort auf den Befehl '{command}' "
 "aktualisiert.\n"
@@ -299,11 +337,11 @@ msgid ""
 "@{bot_username} {set_cmd_alt_cmd_command} {command} {curr_alt_cmd}"
 msgstr ""
 
-#: modules/message_controller.py:1218
+#: modules/message_controller.py:1489
 msgid "Du hast erfolgreich den Nutzer @{user_id} berechtigt."
 msgstr ""
 
-#: modules/message_controller.py:1225
+#: modules/message_controller.py:1496
 msgid ""
 "Der Nutzer @{user_id} konnte nicht berechtigt werden.\n"
 "\n"
@@ -312,11 +350,11 @@ msgid ""
 "2. Du bist nicht berechtigt, diesen Nutzer zu berechtigen."
 msgstr ""
 
-#: modules/message_controller.py:1249
+#: modules/message_controller.py:1520
 msgid "Du hast erfolgreich den Nutzer @{user_id} entmächtigt."
 msgstr ""
 
-#: modules/message_controller.py:1256
+#: modules/message_controller.py:1527
 msgid ""
 "Der Nutzer @{user_id} konnte nicht entmächtigt werden.\n"
 "\n"
@@ -324,13 +362,13 @@ msgid ""
 "Du bist nicht berechtigt, diesen Nutzer zu entmächtigen."
 msgstr ""
 
-#: modules/message_controller.py:1284
+#: modules/message_controller.py:1555
 msgid ""
 "Liste aller Nutzer mit Charakteren:\n"
 "--- Seite {page} ---\n"
 msgstr ""
 
-#: modules/message_controller.py:1287
+#: modules/message_controller.py:1558
 #, python-format
 msgid ""
 "{consecutive_number}.: {user_name}\n"
@@ -339,14 +377,14 @@ msgid ""
 "letzte Änderung: {last_change:%d.%m.%Y}"
 msgstr ""
 
-#: modules/message_controller.py:1323
+#: modules/message_controller.py:1594
 msgid ""
 "\n"
 "\n"
 "(Weitere Seiten: {icon_left} und {icon_right} zum navigieren)"
 msgstr ""
 
-#: modules/message_controller.py:1351
+#: modules/message_controller.py:1622
 msgid ""
 "Die folgende Charaktervorlage kann genutzt werden um einen neuen "
 "Charakter im RPG zu erstellen.\n"
@@ -360,7 +398,7 @@ msgid ""
 "schreibe in der ersten Zeile '{change_command}' anstatt '{add_command}'"
 msgstr ""
 
-#: modules/message_controller.py:1391
+#: modules/message_controller.py:1656
 msgid ""
 "Weitere Beispiele\n"
 "Alle Beispiele sind in einzelnen Abschnitten mittels ----- getrennt.\n"
@@ -399,43 +437,43 @@ msgid ""
 "{number} der oben gezeigten Beispiele als Vorauswahl angeboten"
 msgstr ""
 
-#: modules/message_controller.py:1437
+#: modules/message_controller.py:1702
 msgid "Neuer Charakter"
 msgstr ""
 
-#: modules/message_controller.py:1443
+#: modules/message_controller.py:1708
 msgid "Rot, Grün, Blau, Schwarz, Weiß"
 msgstr ""
 
-#: modules/message_controller.py:1469
+#: modules/message_controller.py:1734
 msgid "Kopf"
 msgstr ""
 
-#: modules/message_controller.py:1469
+#: modules/message_controller.py:1734
 msgid "Zahl"
 msgstr ""
 
-#: modules/message_controller.py:1471
+#: modules/message_controller.py:1736
 msgid "Die Münze zeigt"
 msgstr ""
 
-#: modules/message_controller.py:1475 modules/message_controller.py:1480
+#: modules/message_controller.py:1740 modules/message_controller.py:1745
 msgid "Der Würfel zeigt"
 msgstr ""
 
-#: modules/message_controller.py:1535 modules/message_controller.py:1537
+#: modules/message_controller.py:1800 modules/message_controller.py:1802
 msgid "Die Würfel zeigen"
 msgstr ""
 
-#: modules/message_controller.py:1538
+#: modules/message_controller.py:1803
 msgid "Ergebnis"
 msgstr ""
 
-#: modules/message_controller.py:1547
+#: modules/message_controller.py:1812
 msgid "Ich wähle"
 msgstr ""
 
-#: modules/message_controller.py:1621
+#: modules/message_controller.py:1886
 msgid "Sorry {user[first_name]}, den Befehl '{command}' kenne ich nicht."
 msgstr ""
 

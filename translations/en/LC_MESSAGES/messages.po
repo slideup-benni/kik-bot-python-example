@@ -37,12 +37,12 @@ msgstr "Error calling the command.\n\n"
 
 #: modules/message_controller.py:153
 msgid "Hi {user[first_name]}, mit mir kann man auch direkt schreiben. Wenn du möchtest, kannst du hier auch @{bot_username} vor allen Befehlen weg lassen. Probier es aus: Antworte mir einfach mit '{help_command}' und du bekommst eine Liste aller Befehle"
-msgstr "Hi {user [first_name]}, with me you can also write directly. If you want, you can also omit @{bot_username} from all commands. Try it: Just answer '{help_command}' and you will get a list of all commands"
+msgstr "Hi {user[first_name]}, with me you can also write directly. If you want, you can also omit @{bot_username} from all commands. Try it: Just answer '{help_command}' and you will get a list of all commands"
 
 #: modules/message_controller.py:173
 msgid "Hi {user[first_name]}, ich bin der Steckbrief-Bot der Gruppe #{kik_group_id}\n"
 "Für weitere Informationen tippe auf Antwort und dann auf '{help_command}'."
-msgstr "Hi {user [first_name]}, I'm the character bot of the group #{kik_group_id}\n"
+msgstr "Hi {user[first_name]}, I'm the character bot of the group #{kik_group_id}\n"
 "For more information, tap Reply and then '{help_command}'."
 
 #: modules/message_controller.py:222 modules/message_controller.py:265
@@ -271,7 +271,7 @@ msgid "Der Nutzer @{user_id} konnte nicht berechtigt werden.\n\n"
 "Dies kann folgende Ursachen haben:\n"
 "1. Der Nutzer ist bereits berechtigt.\n"
 "2. Du bist nicht berechtigt, diesen Nutzer zu berechtigen."
-msgstr "The user @ {user_id} could not be authorized.\n\n"
+msgstr "The user @{user_id} could not be authorized.\n\n"
 "This can have the following causes:\n"
 "1. The user is already authorized.\n"
 "2. You are not authorized to authorize this user."
@@ -382,7 +382,7 @@ msgstr "Further examples\n"
 "------\n"
 "@{bot_username} {dice_command} Red, Green, Blue, Black, White\n"
 "------\n"
-"Please note that all commands to the bot must begin with @ {bot_username}. The message must not start with a space or other character, otherwise the message will not be forwarded to the bot.\n"
+"Please note that all commands to the bot must begin with @{bot_username}. The message must not start with a space or other character, otherwise the message will not be forwarded to the bot.\n"
 "If you type in answers to this message, you will be offered {number} of the examples above as a pre-selection"
 
 #: modules/message_controller.py:1437
@@ -423,5 +423,5 @@ msgstr "I choose"
 
 #: modules/message_controller.py:1621
 msgid "Sorry {user[first_name]}, den Befehl '{command}' kenne ich nicht."
-msgstr "Sorry {user [first_name]}, the command '{command}' I do not know."
+msgstr "Sorry {user[first_name]}, the command '{command}' I do not know."
 

@@ -26,6 +26,15 @@
     {{ render_field(form.message_body) }}
     {{ render_field(form.message_from_user) }}
     {{ render_field(form.message_type) }}
+    {{ render_field(form.message_lang) }}
   </dl>
   <p><input type=submit value=Submit>
 </form>
+<div id="info">@{{ bot_username }}
+    <div id="info_hover">
+        <ul>
+            <li>Database: {{ database_file }}</li>
+            <li>Config: {{ config_file }}</li>
+        </ul>
+    </div>
+</div>

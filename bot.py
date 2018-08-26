@@ -86,7 +86,7 @@ def incoming():
     for message in messages:
         try:
             user = LazyKikUser.init(message.from_user) # type: LazyKikUser
-            with force_locale("de"):
+            with force_locale(message_controller.get_config().get("BaseLanguage", "en")):
                 response_messages += message_controller.process_message(message, user)
         except:
             error_id = hashlib.md5((str(int(time.time())) + message.from_user).encode('utf-8')).hexdigest()
@@ -176,6 +176,11 @@ class DebugMessageForm(Form):
         ("private_group","private_group"),
         ("public_group","public_group")
     ])
+    message_lang = SelectField("Language", choices=[
+        ("default", "Default"),
+        ("de", "Deutsch"),
+        ("en", "English")
+    ])
 
 
 @app.route("/debug", methods=["GET", "POST"])
@@ -199,7 +204,6 @@ def debug():
 
         message = None
         message_body = re.sub("^@{bot_username}\s*".format(bot_username=bot_username), "", form.message_body.data.strip())
-
 
         if form.message_type.data == "direct_bot":
             message = TextMessage(
@@ -286,32 +290,28 @@ def debug():
 
         if message is not None:
 
-            try:
-                user = LazyKikUser.init("ismil1110") # type: LazyKikUser
-                with force_locale("de"):
-                    response_messages = message_controller.process_message(message, user)
-                    print(json.dumps(response_messages, default=lambda o: getattr(o, '__dict__', str(o)), indent=4, sort_keys=True))
-            except:
-                response_messages = [TextMessage(
-                    to=message.to,
-                    chat_id=message.chat_id,
-                    body="Message-Error: ({bot_username})\n---\nTrace: {trace}\n---\nReq: {request}".format(
-                        bot_username=bot_username,
-                        trace=traceback.format_exc(),
-                        request=json.dumps(message.__dict__, indent=4, sort_keys=True),
-                    ),
-                    keyboards=[SuggestedResponseKeyboard(responses=[MessageController.generate_text_response("Hilfe")])]
-                )]
-                print(response_messages[0].body)
+            user = LazyKikUser.init("ismil1110") # type: LazyKikUser
+            lang = form.message_lang.data if form.message_lang.data != "default" else message_controller.get_config().get("BaseLanguage", "en")
+            with force_locale(lang):
+                response_messages = message_controller.process_message(message, user)
+                print(json.dumps(response_messages, default=lambda o: getattr(o, '__dict__', str(o)), indent=4, sort_keys=True))
 
     if len(response_messages) > 0 and len(response_messages[len(response_messages)-1].keyboards) > 0:
         keyboards = response_messages[len(response_messages)-1].keyboards[0].responses
 
-    return render_template('debug.html', form=form, messages=response_messages, keyboards=keyboards)
+    return render_template(
+        'debug.html',
+        form=form,
+        messages=response_messages,
+        keyboards=keyboards,
+        bot_username=message_controller.bot_username,
+        config_file=os.path.basename(config_file),
+        database_file=os.path.basename(message_controller.character_persistent_class.database_path)
+    )
 
 @babel.localeselector
 def get_locale():
-    return 'de'
+    return default_config.get("BaseLanguage", "en")
 
 
 config_file = os.environ.get('RPCHARBOT_CONF', 'config.ini')
