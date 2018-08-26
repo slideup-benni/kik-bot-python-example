@@ -1,15 +1,14 @@
 import csv
+import datetime
+import json
 import math
 import os
 import random
 import re
+import sqlite3
 import time
 
-
-from kik.messages import TextMessage
-
 from modules.character_persistent_class import CharacterPersistentClass
-from modules.kik_user import User
 from modules.message_controller import MessageController, MessageCommand, MessageParam, CommandMessageResponse
 from datetime import timedelta
 
@@ -29,8 +28,7 @@ def parse_work_string(time_str, regex_str):
     return timedelta(**time_params), stat_points
 
 
-def work(timedelta: timedelta, difficulty, stat_points, response_messages, message):
-    minutes = timedelta.total_seconds()/60
+def work(minutes, difficulty, stat_points):
     appendix = ""
     if difficulty == 1:
         claw_per_minute = 0.125
@@ -43,14 +41,26 @@ def work(timedelta: timedelta, difficulty, stat_points, response_messages, messa
         hours_bocked = math.ceil(minutes / 60) + random.randint(0, math.ceil(minutes / 60))
         appendix = " und bist für {} Stunde(n) erschöpft. Du kannst in der Zeit weder arbeiten noch kämpfen.".format(hours_bocked)
 
-    result = math.ceil(claw_per_minute*minutes)+random.randint(0, math.ceil(claw_per_minute*minutes))
-    response_messages.append(TextMessage(
-        to=message.from_user,
-        chat_id=message.chat_id,
-        body="*Du erhältst für deine Arbeit {} Krallen{}*".format(result, appendix),
-        keyboards=[]
-    ))
-    return response_messages
+    form_hours = math.floor(minutes/60)
+    form_minutes = minutes - math.floor(minutes / 60) * 60
+
+    if form_hours != 0 and form_minutes != 0:
+        time = "{hours}:{minutes:02d} Stunden".format(hours=form_hours, minutes=form_minutes)
+    elif form_hours != 0:
+        time = "{hours} Stunden".format(hours=form_hours)
+    else:
+        time = "{minutes} Minuten".format(minutes=form_minutes)
+
+    claws_base = math.ceil(claw_per_minute * minutes)
+    result = claws_base + random.randint(0, claws_base)
+
+    # expl = "[{from_claws}~{to_claws}]".format(
+    #     time=time,
+    #     from_claws=claws_base,
+    #     to_claws=(claws_base*2-1)
+    # )
+
+    return "*Du erhältst für deine {time} Arbeit {claws} Krallen{appendix}*".format(time=time, claws=result, appendix=appendix)
 
 
 class CharacterStats:
@@ -177,7 +187,7 @@ class CharacterStats:
 
 class ModuleCharacterPersistentClass(CharacterPersistentClass):
 
-    def set_char_stat(self, user_id, stat_id, stat_num, char_id=None):
+    def set_char_stat(self, user_id, stat_id, stat_points, char_id=None):
         self.connect_database()
 
         if char_id is None:
@@ -196,20 +206,20 @@ class ModuleCharacterPersistentClass(CharacterPersistentClass):
             ), [
                 user_id,
                 int(char_id),
-                0 if stat_id != 1 else int(stat_num),
-                0 if stat_id != 2 else int(stat_num),
-                0 if stat_id != 3 else int(stat_num),
-                0 if stat_id != 4 else int(stat_num),
-                0 if stat_id != 5 else int(stat_num),
-                0 if stat_id != 6 else int(stat_num),
-                0 if stat_id != 7 else int(stat_num),
+                0 if stat_id != 1 else int(stat_points),
+                0 if stat_id != 2 else int(stat_points),
+                0 if stat_id != 3 else int(stat_points),
+                0 if stat_id != 4 else int(stat_points),
+                0 if stat_id != 5 else int(stat_points),
+                0 if stat_id != 6 else int(stat_points),
+                0 if stat_id != 7 else int(stat_points),
             ])
         else:
             self.cursor.execute((
                 "UPDATE character_stats "
                 "SET {} = ? "
                 "WHERE user_id LIKE ? AND char_id=? AND deleted IS NULL "
-            ).format("stat_"+str(int(stat_id))), [stat_num, user_id, char_id])
+            ).format("stat_"+str(int(stat_id))), [stat_points, user_id, char_id])
 
         return self.get_char_stats(user_id, char_id)
 
@@ -228,6 +238,164 @@ class ModuleCharacterPersistentClass(CharacterPersistentClass):
 
         return self.cursor.fetchone()
 
+    def get_quests(self):
+        self.connect_database()
+        self.cursor.execute((
+            "SELECT * "
+            "FROM quests "
+            "WHERE enabled <> 0 "
+            "  AND (SELECT COUNT(*) "
+            "       FROM character_quests "
+            "       where quest_id = quests.id "
+            "         AND completed + quests.repeat_hours*60*60 > ?) < max_active_count; "
+        ), [int(time.time())])
+
+        return self.cursor.fetchall()
+
+    def get_quest_by_caption(self, caption):
+        self.connect_database()
+
+        self.cursor.execute((
+            "SELECT *, (SELECT GROUP_CONCAT(user_id) "
+            "       FROM character_quests "
+            "       where quest_id = quests.id "
+            "         AND completed + quests.repeat_hours*60*60 > ? "
+            "       group by quest_id) AS curr_active "
+            "FROM quests "
+            "WHERE enabled <> 0 AND caption = ?;"
+        ), [int(time.time()), caption])
+
+        return self.cursor.fetchone()
+
+    def get_quest(self, quest_id):
+        self.connect_database()
+
+        self.cursor.execute((
+            "SELECT *, (SELECT GROUP_CONCAT(user_id) "
+            "       FROM character_quests "
+            "       where quest_id = quests.id "
+            "         AND completed + quests.repeat_hours*60*60 > ? "
+            "       group by quest_id) AS curr_active "
+            "FROM quests "
+            "WHERE enabled <> 0 AND id = ?;"
+        ), [int(time.time()), quest_id])
+
+        return self.cursor.fetchone()
+
+    def get_char_quests(self, user_id, char_id):
+        self.connect_database()
+        self.cursor.execute((
+            "SELECT * "
+            "FROM character_quests AS cq "
+            "LEFT JOIN quests AS q ON q.id = cq.quest_id "
+            "LEFT JOIN quest_parts AS qp ON qp.id = cq.part_id "
+            "WHERE cq.user_id = ? "
+            "  AND cq.char_id = ? "
+            "  AND cq.completed > ?"
+            "  AND cq.status = 'running'; "
+        ), [user_id, char_id, int(time.time())])
+
+        return self.cursor.fetchall()
+
+    def get_char_quest(self, user_id, char_id, quest_id):
+        self.connect_database()
+        self.cursor.execute((
+            "SELECT * "
+            "FROM character_quests AS cq "
+            "LEFT JOIN quests AS q ON q.id = cq.quest_id "
+            "LEFT JOIN quest_parts AS qp ON qp.id = cq.part_id "
+            "WHERE cq.user_id = ? "
+            "  AND cq.char_id = ?"
+            "  AND cq.quest_id = ? "
+            "  AND cq.completed > ?"
+            "  AND cq.status = 'running'; "
+        ), [user_id, char_id, quest_id, int(time.time())])
+
+        return self.cursor.fetchone()
+
+    def accept_quest(self, user_id, char_id, quest_part, quest=None):
+        self.connect_database()
+
+        if quest is None:
+            quest = self.get_quest(quest_part["quest_id"])
+
+        self.cursor.execute((
+            "INSERT INTO character_quests "
+            "(user_id, char_id, quest_id, part_id, status, started, changed, completed) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?,  ?);"
+        ), [
+            user_id,
+            char_id,
+            quest_part["quest_id"],
+            quest_part["id"],
+            "running",
+            int(time.time()),
+            int(time.time()),
+            int(time.time()) + int(quest["max_duration"]) * 3600
+        ])
+
+        return True
+
+    def set_char_quest_part(self, user_id, char_id, quest_part):
+        self.connect_database()
+
+        if int(quest_part["next_part_num"]) == -1:
+            self.cursor.execute((
+                "UPDATE character_quests "
+                "SET part_id=?, changed=?, completed=?, status=? "
+                "WHERE user_id = ? "
+                "  AND char_id = ? "
+                "  AND quest_id = ? "
+            ), [
+                int(quest_part["id"]),
+                int(time.time()),
+                int(time.time()),
+                "succeed",
+                user_id,
+                int(char_id),
+                int(quest_part["quest_id"])
+            ])
+        else:
+            self.cursor.execute((
+                "UPDATE character_quests "
+                "SET part_id=?, changed=? "
+                "WHERE user_id = ? "
+                "  AND char_id = ? "
+                "  AND quest_id = ?"
+                "  AND status = 'running';"
+            ), [
+                int(quest_part["id"]),
+                int(time.time()),
+                user_id,
+                int(char_id),
+                int(quest_part["quest_id"])
+            ])
+
+
+        return True
+
+    def get_quest_parts(self, quest_id, part_num):
+        self.connect_database()
+        self.cursor.execute((
+            "SELECT * "
+            "FROM quest_parts "
+            "WHERE quest_id = ? "
+            "  AND part_num = ? "
+        ), [quest_id, part_num])
+
+        return self.cursor.fetchall()
+
+    def get_quest_parts_by_name(self, quest_id, part_name):
+        self.connect_database()
+        self.cursor.execute((
+            "SELECT * "
+            "FROM quest_parts "
+            "WHERE quest_id = ? "
+            "  AND part_name = ? "
+        ), [quest_id, part_name])
+
+        return self.cursor.fetchall()
+
     def move_char(self, from_user_id, to_user_id, from_char_id=None):
         self.connect_database()
 
@@ -243,6 +411,12 @@ class ModuleCharacterPersistentClass(CharacterPersistentClass):
             "WHERE user_id LIKE ? AND char_id=?"
         ), data)
 
+        self.cursor.execute((
+            "UPDATE character_quests "
+            "SET user_id=?, char_id=? "
+            "WHERE user_id LIKE ? AND char_id=?"
+        ), data)
+
         return to_char_id
 
     def remove_char(self, user_id, deletor_id, char_id=None):
@@ -251,7 +425,7 @@ class ModuleCharacterPersistentClass(CharacterPersistentClass):
         if char_id is None:
             char_id = self.get_min_char_id()
 
-            CharacterPersistentClass.remove_char(user_id, deletor_id, char_id)
+        CharacterPersistentClass.remove_char(self, user_id, deletor_id, char_id)
 
         data = (int(time.time()), user_id, char_id)
         self.cursor.execute((
@@ -259,6 +433,12 @@ class ModuleCharacterPersistentClass(CharacterPersistentClass):
             "SET deleted=? "
             "WHERE user_id LIKE ? AND char_id=?"
         ), data)
+
+        self.cursor.execute((
+            "DELETE FROM character_quests "
+            "WHERE user_id = ? "
+            "  AND char_id = ?"
+        ), [user_id, char_id])
 
 
 class ModuleMessageController(MessageController):
@@ -276,14 +456,15 @@ class ModuleMessageController(MessageController):
             response.add_response_message("Leider konnte ich deinen Nutzer nicht zuordnen. Bitte führe den Befehl erneut mit deiner Nutzer-Id aus:")
             response.add_response_message("@{bot_username} {command}".format(
                 bot_username=message_controller.bot_username,
-                command=command.get_example({**params, key: "@Deine_User_Id"}, "de")
+                command=command.get_example({**params, key: "@Deine_User_Id"})
             ))
             return None, response
 
+        user_id = params[key]
         if params[key] is None:
-            params[key] = "@" + message.from_user
+            user_id = "@" + message.from_user
 
-        return params[key], response
+        return user_id, response
 
     @staticmethod
     def require_char_id(message_controller, params, key, user_id, response: CommandMessageResponse):
@@ -314,73 +495,175 @@ class ModuleMessageController(MessageController):
             big_body = "Für den Nutzer sind mehrere Charaktere vorhanden. Bitte wähle einen aus:\n\n" + chars_txt
             for body in ModuleMessageController.split_messages(big_body, "---"):
                 response.add_response_message(body)
-                response.set_suggestions([command.get_example({**params, "char_id": char["char_id"]}, "de") for char in chars][:12])
+                response.set_suggestions([command.get_example({**params, "char_id": char["char_id"]}) for char in chars][:12])
 
             return None, response
 
+        char_id = params[key]
         if len(chars) == 1 and params[key] is None:
-            params[key] = chars[0]["char_id"]
+            char_id = chars[0]["char_id"]
 
         found = False
         for char in chars:
-            if int(char["char_id"]) == int(params[key]):
+            if int(char["char_id"]) == int(char_id):
                 found = True
                 break
 
         if found is False:
-            response.add_response_message("Der Charakter mit der Id {} konnte nicht gefunden werden.".format(params[key]))
-            response.set_suggestions([command.get_example({**params, "char_id": char["char_id"]}, "de") for char in chars][:12])
+            response.add_response_message("Der Charakter mit der Id {} konnte nicht gefunden werden.".format(char_id))
+            response.set_suggestions([command.get_example({**params, "char_id": char["char_id"]}) for char in chars][:12])
             return None, response
-        return int(params[key]), response
+        return int(char_id), response
+
+    def get_my_quest_part(self, parts, user_id, char_id):
+
+        if len(parts) == 1:
+            return parts[0]
+
+        char_stats_db = self.character_persistent_class.get_char_stats(user_id, char_id)
+        char_stats = CharacterStats(char_stats_db) if char_stats_db is not None else CharacterStats.init_empty(user_id, char_id)
+
+        def stat_gt(stat_id, stat_points):
+            return char_stats.get_stat_by_id(int(stat_id)) > int(stat_points)
+
+        def time(from_hour, to_hour):
+            now = datetime.datetime.now()
+
+            if int(from_hour) < int(to_hour):
+                return int(from_hour) <= now.hour < int(to_hour)
+            return now.hour >= int(to_hour) or now.hour < int(from_hour)
+
+        def process_condition(part):
+            importance = 1
+            if part["condition"] is None or part["condition"] == "":
+                return importance
+
+            conds = part["condition"].split("&")
+            regex = re.compile(r"^(?P<func>[a-z_]+)\((?P<args>.*)\)$", re.IGNORECASE | re.MULTILINE)
+
+            for cond in conds:
+                match = regex.match(cond.strip())
+                if match is None:
+                    print("[{bot_username}] Quest: Syntax-Fehler in Condition '{cond}' im Quest {quest_id} Part {part_num}".format(
+                        bot_username=self.bot_username,
+                        cond=cond,
+                        quest_id=part["quest_id"],
+                        part_num=part["part_num"]
+                    ))
+                    return 0
+                dict = match.groupdict()
+
+                args = None if dict["args"] is None else dict["args"].split(",")
+                if dict["func"] == "stat_gt" and args is not None and len(args) == 2:
+                    if stat_gt(int(args[0]), int(args[1])) is True:
+                        importance += int(args[1])+1
+                    else:
+                        return 0
+
+                elif dict["func"] == "time" and args is not None and len(args) == 2:
+                    if time(int(args[0]), int(args[1])) is True:
+                        importance += 11
+                    else:
+                        return 0
+
+            return importance
+
+        curr_part = None
+        curr_importance = 0
+        for part in parts:
+            part_importance = process_condition(part)
+            if part_importance > 0 and part_importance >= curr_importance:
+                curr_importance = part_importance
+                curr_part = part
+
+        return curr_part
+
+    def get_quest_part_messages(self, quest_part, quest, body_before=""):
+        messages = [body_before]
+        suggestions = []
+
+        if quest_part is not None and quest_part["text"] is not None and quest_part["text"] != "":
+            messages[0] += "\n\n" + quest_part["text"]
+
+        if quest_part is not None and quest_part["next_step_text"] is not None and quest_part["next_step_text"] != "":
+            messages[0] += "\n\n( Nächste Schritte: " + quest_part["next_step_text"] + " )"
+
+        if quest_part is not None and quest_part["next_part_num"] is not None and int(quest_part["next_part_num"]) != -1:
+            next_parts = self.character_persistent_class.get_quest_parts(int(quest_part["quest_id"]), int(quest_part["next_part_num"]))
+            if next_parts is not None:
+                messages[0] += "\n( Mit dem folgenden Befehl kannst du dann die nächste Teilaufgabe des Quests aufrufen: )"
+                next_command = "Quest-Aufgabe \"{quest[caption]}\" \"{part[part_name]}\"".format(
+                    quest=quest,
+                    part=next_parts[0]
+                )
+                messages.append("@{bot_username} ".format(
+                    bot_username=self.bot_username,
+                ) + next_command)
+                suggestions = [next_command]
+
+        return [small_message for big_message in messages for small_message in self.split_messages(big_message)], suggestions
 
 
-@ModuleMessageController.add_method({"de": "leichte-arbeit", "en": "easy-work", "_alts": []})
-def easy_msg_work(self, message: TextMessage, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User):
-    if len(message_body.split(None, 1)) != 2:
-        response_messages.append(ModuleMessageController.get_error_response(message))
-        return response_messages, user_command_status, user_command_status_data
+easy_msg_work_cmd = MessageCommand([
+    MessageParam.init_duration_minutes("duration", required=True)
+], "leichte-arbeit", "easy-work")
+@ModuleMessageController.add_method(easy_msg_work_cmd)
+def easy_msg_work(response: CommandMessageResponse):
 
-    timedelta, stat_points = parse_work_string(message_body.split(None, 1)[1], r'^((?P<hours>\d+?)\s*?(h|Stunden|Std))?\s*?((?P<minutes>\d+?)\s*?(m|min|Minuten)?)?$')
-    if timedelta is None or timedelta.total_seconds() == 0:
-        response_messages.append(ModuleMessageController.get_error_response(message))
-        return response_messages, user_command_status, user_command_status_data
+    response.add_response_message(work(response.get_value("duration"), 1, 0))
+    return response
 
-    return work(timedelta, 1, 0, response_messages, message), user_command_status, user_command_status_data
+med_msg_work_cmd = MessageCommand([
+    MessageParam.init_duration_minutes("duration", required=True),
+    MessageParam("stat_points", MessageParam.CONST_REGEX_NUM, required=True, validate_in_message=True, examples=range(1, 11))
+], "mittlere-arbeit", "medium-work",["mittelschwere-arbeit"])
+@ModuleMessageController.add_method(med_msg_work_cmd)
+def med_msg_work(response: CommandMessageResponse):
+
+    if response.get_value("stat_points") is None:
+
+        response.add_response_message("Um eine mittelschwere Arbeit ausüben zu können, musst du für den Job geeignet sein.\n"
+                                      "Bitte gib als zweiten Wert deine Stat-Punkte an, die am ehesten zu deiner Tätigkeit passen.\n"
+                                      "Beispielsweise\n"
+                                      "- Charisma-Punkte als Kellner oder Verkäufer,\n"
+                                      "- Stärke-Punkte als Schmied oder Wache, oder\n"
+                                      "- Wissens-Punkte als Lehrer.\n\n" +
+                                      response.get_command().get_random_example_text(4, response, response.get_params()))
+        response.set_suggestions([response.get_command().get_example({**response.get_params(), "stat_points": stat_point}) for stat_point in range(1, 11)])
+        return response
+
+    response.add_response_message(work(response.get_value("duration"), 2, int(response.get_value("stat_points"))))
+    return response
 
 
-@ModuleMessageController.add_method({"de": "mittlere-arbeit", "en": "medium-work", "_alts": ["mittelschwere-arbeit"]})
-def med_msg_work(self, message: TextMessage, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User):
-    if len(message_body.split(None, 1)) != 2:
-        response_messages.append(ModuleMessageController.get_error_response(message))
-        return response_messages, user_command_status, user_command_status_data
+hard_msg_work_cmd = MessageCommand([
+    MessageParam.init_duration_minutes("duration", required=True),
+    MessageParam("stat_points", MessageParam.CONST_REGEX_NUM, required=True, validate_in_message=True, examples=range(1, 11))
+], "schwere-arbeit", "hard-work")
+@ModuleMessageController.add_method(hard_msg_work_cmd)
+def hard_msg_work(response: CommandMessageResponse):
 
-    timedelta, stat_points = parse_work_string(message_body.split(None, 1)[1], r'^((?P<hours>\d+?)\s*?(h|Stunden|Std))?\s*?((?P<minutes>\d+?)\s*?(m|min|Minuten)?)?\s*(?P<stat_points>\d)$')
-    if timedelta is None or timedelta.total_seconds() == 0:
-        response_messages.append(ModuleMessageController.get_error_response(message))
-        return response_messages, user_command_status, user_command_status_data
+    if response.get_value("stat_points") is None:
 
-    return work(timedelta, 2, stat_points, response_messages, message), user_command_status, user_command_status_data
+        response.add_response_message("Um eine schwere Arbeit ausüben zu können, musst du für den Job geeignet sein.\n"
+                                      "Bitte gib als zweiten Wert deine Stat-Punkte an, die am ehesten zu deiner Tätigkeit passen.\n"
+                                      "Beispielsweise\n"
+                                      "- Charisma-Punkte als Kellner oder Verkäufer,\n"
+                                      "- Stärke-Punkte als Schmied oder Wache, oder\n"
+                                      "- Wissens-Punkte als Lehrer.\n\n" +
+                                      response.get_command().get_random_example_text(4, response, response.get_params()))
+        response.set_suggestions([response.get_command().get_example({**response.get_params(), "stat_points": stat_point}) for stat_point in range(1, 11)])
+        return response
 
-
-@ModuleMessageController.add_method({"de": "schwere-arbeit", "en": "hard-work", "_alts": []})
-def hard_msg_work(self, message: TextMessage, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User):
-    if len(message_body.split(None, 1)) != 2:
-        response_messages.append(ModuleMessageController.get_error_response(message))
-        return response_messages, user_command_status, user_command_status_data
-
-    timedelta, stat_points = parse_work_string(message_body.split(None, 1)[1], r'^((?P<hours>\d+?)\s*?(h|Stunden|Std))?\s*?((?P<minutes>\d+?)\s*?(m|min|Minuten)?)?\s*(?P<stat_points>\d)$')
-    if timedelta is None or timedelta.total_seconds() == 0:
-        response_messages.append(ModuleMessageController.get_error_response(message))
-        return response_messages, user_command_status, user_command_status_data
-
-    return work(timedelta, 3, stat_points, response_messages, message), user_command_status, user_command_status_data
+    response.add_response_message(work(response.get_value("duration"), 3, int(response.get_value("stat_points"))))
+    return response
 
 
 set_stats_command = MessageCommand([
-    MessageParam("user_id", MessageParam.CONST_REGEX_USER_ID),
-    MessageParam("char_id", MessageParam.CONST_REGEX_NUM),
+    MessageParam.init_user_id(),
+    MessageParam.init_char_id(),
     MessageParam.init_selection("stat_name", list(CharacterStats.get_all_stat_names("de")), required=True, validate_in_message=True),
-    MessageParam("stat_num", MessageParam.CONST_REGEX_NUM, required=True, validate_in_message=True)
+    MessageParam("stat_points", MessageParam.CONST_REGEX_NUM, required=True, validate_in_message=True, examples=range(1,11))
 ], "Statuswerte-setzen", "set-stats", ["Stats-setzen", "Stat-setzen", "Statuswert-setzen"])
 @ModuleMessageController.add_method(set_stats_command)
 def set_stats(response: CommandMessageResponse):
@@ -403,13 +686,13 @@ def set_stats(response: CommandMessageResponse):
         response.add_response_message("Du hast keinen Statuswert angegeben. Mögliche Werte sind:\n\n{stat_names}".format(
             stat_names="\n".join([stat_name for stat_id, stat_name in stat_names.items()])
         ))
-        response.set_suggestions([command.get_example({**params, "stat_name": stat_name}, "de") for stat_id, stat_name in stat_names.items()])
+        response.set_suggestions([command.get_example({**params, "stat_name": stat_name}) for stat_id, stat_name in stat_names.items()])
         return response
 
     character_persistent_class = message_controller.character_persistent_class  # type: ModuleCharacterPersistentClass
     curr_stat_id = CharacterStats.stat_id_from_name(params["stat_name"], "de")
 
-    if params["stat_num"] is None:
+    if params["stat_points"] is None:
         char_stats_db = character_persistent_class.get_char_stats(plain_user_id, char_id)
         stats = CharacterStats(char_stats_db) if char_stats_db is not None else CharacterStats.init_empty(plain_user_id, char_id)
         curr_stat_points = stats.get_stat_by_id(curr_stat_id)
@@ -431,36 +714,36 @@ def set_stats(response: CommandMessageResponse):
             )
 
         response.add_response_message(body)
-        response.set_suggestions([command.get_example({**params, "stat_num": stat_point}, "de") for stat_point in possible_points])
+        response.set_suggestions([command.get_example({**params, "stat_points": stat_point}) for stat_point in possible_points])
         return response
 
-    stats = CharacterStats(character_persistent_class.set_char_stat(plain_user_id, curr_stat_id, params["stat_num"], char_id=char_id))
+    stats = CharacterStats(character_persistent_class.set_char_stat(plain_user_id, curr_stat_id, params["stat_points"], char_id=char_id))
 
     keyboards = []
     for stat_id, stat_name in stat_names.items():
         if stats.get_stat_by_id(stat_id) == 0 and stat_id != curr_stat_id:
-            keyboards.append(command.get_example({**params, "stat_num": None, "stat_name": stat_name}, "de"))
+            keyboards.append(command.get_example({**params, "stat_points": None, "stat_name": stat_name}))
     for stat_id, stat_name in stat_names.items():
         if stats.get_stat_by_id(stat_id) != 0 and stat_id != curr_stat_id:
-            keyboards.append(command.get_example({**params, "stat_num": None, "stat_name": stat_name}, "de"))
+            keyboards.append(command.get_example({**params, "stat_points": None, "stat_name": stat_name}))
 
     response.add_response_message(stats.gen_stat_message("de"))
     response.add_response_message("{stat_name} {stat_points} verleiht dir folgende Eigenschaften:\n\n{stat_text}".format(
-        stat_points=params["stat_num"],
+        stat_points=params["stat_points"],
         stat_name=params["stat_name"],
-        stat_text=CharacterStats.get_stat_text(curr_stat_id, int(params["stat_num"]))
+        stat_text=CharacterStats.get_stat_text(curr_stat_id, int(params["stat_points"]))
     ))
     response.set_suggestions(keyboards)
 
     return response
 
 
-set_stats_command = MessageCommand([
-    MessageParam("user_id", MessageParam.CONST_REGEX_USER_ID),
-    MessageParam("char_id", MessageParam.CONST_REGEX_NUM),
+stats_command = MessageCommand([
+    MessageParam("user_id", MessageParam.CONST_REGEX_USER_ID, examples=MessageParam.random_user),
+    MessageParam("char_id", MessageParam.CONST_REGEX_NUM, examples=range(1,4)),
 ], "Statuswerte", "stats", ["Stats-anzeigen", "Statuswerte-anzeigen", "show-stats"])
-@ModuleMessageController.add_method(set_stats_command)
-def set_stats(response: CommandMessageResponse):
+@ModuleMessageController.add_method(stats_command)
+def stats(response: CommandMessageResponse):
     message_controller = response.get_message_controller()
     params = response.get_params()
 
@@ -482,4 +765,269 @@ def set_stats(response: CommandMessageResponse):
     response.set_suggestions([message_controller.generate_text_user_char("Anzeigen", plain_user_id, char_id, response.get_orig_message())])
     return response
 
+quest_command = MessageCommand([
+    MessageParam("page", MessageParam.CONST_REGEX_NUM, examples=[2,3]),
+], "Quests", "quests", ["schwarzes-Brett", "bulletin-board"])
+@ModuleMessageController.add_method(quest_command)
+def quests(response: CommandMessageResponse):
+    message_controller = response.get_message_controller()
+    character_persistent_class = message_controller.character_persistent_class  # type: ModuleCharacterPersistentClass
+    quests = character_persistent_class.get_quests()
 
+    if quests is None or len(quests) == 0:
+        response.add_response_message("Leider sind derzeit keine Quests verfügbar.")
+        return response
+
+    body = "***\nDu schaust auf das schwarze Brett in der Stadtmitte. {vis_quests_text}:\n".format(
+        vis_quests_text= "Hierauf sind {len_quests} Pergamente angepinnt".format(len_quests=len(quests)) if len(quests) > 1 else "Hierauf ist ein Pergament angepinnt"
+    )
+    for quest in quests:
+        body += "\n- \"{quest[caption]}\"".format(quest=quest)
+
+    body += "\n***"
+
+    response.add_response_messages(message_controller.split_messages(body, "\n\n\n"))
+    response.set_suggestions([MessageController.get_command("Quest-Info").get_example({"caption": "\"" + quest["caption"] + "\""}) for quest in quests])
+
+    return response
+
+quest_info_command = MessageCommand([
+    MessageParam("caption", r"\".*?\"", examples=["\"Heilkräuter für den Schmied\"", "\"Lotte\"", "\"Quest-Überschrift\""], required=True),
+], "Quest-Info", "quest-info", ["Quest-Informationen", "quest-information"])
+@ModuleMessageController.add_method(quest_info_command)
+def quest_info(response: CommandMessageResponse):
+    message_controller = response.get_message_controller()
+    character_persistent_class = message_controller.character_persistent_class  # type: ModuleCharacterPersistentClass
+    quest = character_persistent_class.get_quest_by_caption(response.get_value("caption")[1:-1].strip())  # type: sqlite3.Row
+    params = response.get_params()
+
+    if quest is None:
+        response.add_response_message("Der angegebene Quest konnte nicht gefunden werden. Rufe 'quests' auf, um dir alle verfügbaren Quests anzuzeigen.")
+        response.set_suggestions(["quests"])
+        return response
+
+    rewards = []
+    requirements = []
+    active_users = []
+    if quest["reward_money"] is not None and int(quest["reward_money"]) != 0:
+        rewards.append("Krallen")
+    if quest["reward_exp"] is not None and int(quest["reward_exp"]) != 0:
+        rewards.append("{exp} mEP".format(exp=int(quest["reward_exp"])))
+
+    if quest["min_group_size"] is not None and int(quest["min_group_size"]) > 2:
+        requirements.append("{cnt}-Gruppe benötigt".format(cnt=int(quest["min_group_size"])))
+    if quest["min_stats"] is not None and quest["min_stats"] != "":
+        min_stats = json.loads(quest["min_stats"])
+        for stat in min_stats:
+            requirements.append("min. {stat_points} {stat_name}".format(
+                stat_points=stat["points"],
+                stat_name=CharacterStats.get_stat_names("de")[stat["id"]]
+            ))
+
+    if quest["curr_active"] is not None and quest["curr_active"] != "":
+        active_users = ["@"+user_id for user_id in quest["curr_active"].split(",")]
+
+    body = "***\nDu schaust dir ein Pergament am schwarzen Brett genauer an:\n\n" \
+           "{quest[description]}\n\n\n" \
+           "Belohnung(en): {rewards}\n" \
+           "besondere Voraussetzung(en): {requirements}\n" \
+           "zu erledigen bis: {max_time:%d.%m %H:%M}\n" \
+           "aktuell angenommen von: {curr_active} (max. {max_active})\n" \
+           "***".format(
+                quest=quest,
+                rewards=", ".join(rewards) if len(rewards) != 0 else "-keine-",
+                requirements=", ".join(requirements) if len(requirements) != 0 else "-keine-",
+                max_time=(datetime.datetime.now() + datetime.timedelta(hours=int(quest["max_duration"]))),
+                curr_active=", ".join(active_users) if len(active_users) != 0 else "-keinem-",
+                max_active=int(quest["max_active_count"])
+            )
+
+    response.add_response_messages(message_controller.split_messages(body))
+
+    if int(quest["max_active_count"]) > len(active_users):
+        response.set_suggestions(["Quests",
+                                  MessageController.get_command("Quest-annehmen").get_example({**params, "command": None})
+                                  ])
+    else:
+        response.set_suggestions(["Quests"])
+
+    return response
+
+quest_accept_command = MessageCommand([
+    MessageParam.init_user_id(),
+    MessageParam.init_char_id(),
+    MessageParam("caption", r"\".*?\"", examples=["\"Heilkräuter für den Schmied\"", "\"Lotte\"", "\"Quest-Überschrift\""], required=True),
+], "Quest-annehmen", "quest-accept", ["quest-take", "quest-assume"])
+@ModuleMessageController.add_method(quest_accept_command)
+def quest_accept(response: CommandMessageResponse):
+    message_controller = response.get_message_controller()  # type: ModuleMessageController
+    character_persistent_class = message_controller.character_persistent_class  # type: ModuleCharacterPersistentClass
+    params = response.get_params()
+
+    MAX_QUESTS = 1
+
+    user_id, response = ModuleMessageController.require_user_id(message_controller, params, "user_id", response)
+    if user_id is None:
+        return response
+
+    plain_user_id = user_id[1:]
+
+    char_id, response = ModuleMessageController.require_char_id(message_controller, params, "char_id", plain_user_id, response)
+    if char_id is None:
+        return response
+
+    quest = character_persistent_class.get_quest_by_caption(response.get_value("caption")[1:-1].strip())  # type: sqlite3.Row
+
+    if quest is None:
+        response.add_response_message("Der angegebene Quest konnte nicht gefunden werden. Rufe 'quests' auf, um dir alle verfügbaren Quests anzuzeigen.")
+        response.set_suggestions(["quests"])
+        return response
+
+    user_quests = character_persistent_class.get_char_quests(plain_user_id, char_id)
+
+    if quest["curr_active"] is not None and quest["curr_active"] != "" and len(quest["curr_active"].split(",")) >= int(quest["max_active_count"]):
+        response.add_response_message("Der Quest kann nicht angenommen werden, da er bereits von {cnt} Spieler(n) angenommen wurde. Bitte versuche es später erneut.".format(
+            cnt=len(quest["curr_active"].split(","))
+        ))
+        response.set_suggestions(["quests"])
+        return response
+
+    if user_quests is not None and len(user_quests) >= MAX_QUESTS:
+        response.add_response_message("Du hast bereits einen Quest angenommen und kannst keinen weiteren annehmen. Bitte beende zunächst deinen aktiven Quest.")
+        response.set_suggestions([MessageController.get_command("Quest-Status").get_example({**params, "command": None})])
+        return response
+
+    quest_parts = character_persistent_class.get_quest_parts(quest["id"], 0)
+    quest_part = message_controller.get_my_quest_part(quest_parts, plain_user_id, char_id)
+    character_persistent_class.accept_quest(plain_user_id, char_id, quest_part, quest)
+
+    body = "*Du reißt das Pergament mit der Quest vom schwarzen Brett und steckst es ein. Du hast nun {hours} Stunden Zeit die Quest zu erledigen.*".format(
+                hours=int(quest["max_duration"])
+            )
+
+    messages, suggestions = message_controller.get_quest_part_messages(quest_part, quest, body)
+
+    response.add_response_messages(messages)
+    response.set_suggestions(suggestions)
+
+    return response
+
+quest_task_command = MessageCommand([
+    MessageParam.init_user_id(),
+    MessageParam.init_char_id(),
+    MessageParam("caption", r"\".*?\"", examples=["\"Heilkräuter für den Schmied\"", "\"Lotte\"", "\"Quest-Überschrift\""], required=True),
+    MessageParam("part_name", r"\".*?\"", examples=["\"Beginn\"", "\"Beim Schmied\"", "\"Bei der Stinky's Cove\"", "\"Bei Myrrul's Haus\"", "\"Kiste abgestellt und im Haus\"",
+                                                    "\"Bei der Stinky's Cove (Rückweg)\"", "\"Zurück beim Schmied\""], required=True),
+], "Quest-Aufgabe", "quest-task", ["quest-take", "quest-assume"])
+@ModuleMessageController.add_method(quest_task_command)
+def quest_task(response: CommandMessageResponse):
+    message_controller = response.get_message_controller()  # type: ModuleMessageController
+    character_persistent_class = message_controller.character_persistent_class  # type: ModuleCharacterPersistentClass
+    params = response.get_params()
+
+    user_id, response = ModuleMessageController.require_user_id(message_controller, params, "user_id", response)
+    if user_id is None:
+        return response
+
+    plain_user_id = user_id[1:]
+
+    char_id, response = ModuleMessageController.require_char_id(message_controller, params, "char_id", plain_user_id, response)
+    if char_id is None:
+        return response
+
+    quest = character_persistent_class.get_quest_by_caption(response.get_value("caption")[1:-1].strip())  # type: sqlite3.Row
+
+    if quest is None:
+        response.add_response_message("Der angegebene Quest konnte nicht gefunden werden. Rufe 'quests' auf, um dir alle verfügbaren Quests anzuzeigen.")
+        response.set_suggestions(["quests"])
+        return response
+
+    user_quest = character_persistent_class.get_char_quest(plain_user_id, char_id, int(quest["id"]))
+
+    if user_quest is None:
+        response.add_response_message("Der ausgewählte Quest wurde noch nicht angenommen.")
+        response.set_suggestions([MessageController.get_command("Quest-annehmen").get_example({**params, "command": None})])
+        return response
+
+    quest_next_parts = character_persistent_class.get_quest_parts_by_name(quest["id"], response.get_value("part_name")[1:-1].strip())
+
+    if quest_next_parts is None or len(quest_next_parts) == 0:
+        response.add_response_message("Die angegebene Teilaufgabe des Quests exisiert nicht. Schaue im Questbuch nach um die weiteren Schritte zu sehen.")
+        response.set_suggestions([MessageController.get_command("Quest-Status").get_example({**params, "command": None})])
+        return response
+
+    user_quest_next_part = message_controller.get_my_quest_part(quest_next_parts, plain_user_id, char_id)
+
+    if user_quest_next_part["part_num"] != user_quest["next_part_num"]:
+        response.add_response_message("Du kannst keine Aufgaben überspringen. Schaue im Questbuch nach um die weiteren Schritte zu sehen.")
+        response.set_suggestions([MessageController.get_command("Quest-Status").get_example({**params, "command": None})])
+        return response
+
+    character_persistent_class.set_char_quest_part(plain_user_id, char_id, user_quest_next_part)
+
+    messages, suggestions = message_controller.get_quest_part_messages(user_quest_next_part, quest)
+
+    response.add_response_messages(messages)
+    response.set_suggestions(suggestions)
+
+    return response
+
+
+quest_status_command = MessageCommand([
+    MessageParam.init_user_id(),
+    MessageParam.init_char_id()
+], "Quest-Status", "quest-status", ["my-quests", "meine-quests", "Questbuch", "questbook"])
+@ModuleMessageController.add_method(quest_status_command)
+def quest_status(response: CommandMessageResponse):
+    message_controller = response.get_message_controller()  # type: ModuleMessageController
+    character_persistent_class = message_controller.character_persistent_class  # type: ModuleCharacterPersistentClass
+    params = response.get_params()
+
+    user_id, response = ModuleMessageController.require_user_id(message_controller, params, "user_id", response)
+    if user_id is None:
+        return response
+
+    plain_user_id = user_id[1:]
+
+    char_id, response = ModuleMessageController.require_char_id(message_controller, params, "char_id", plain_user_id, response)
+    if char_id is None:
+        return response
+
+    quests = character_persistent_class.get_char_quests(plain_user_id, char_id)
+
+    if quests is None or len(quests) == 0:
+        response.add_response_message("Du hast derzeit keine Quests angenommen. Begib dich zum schwarzen Brett in der Stadtmitte um verfügbare Quests zu sehen.")
+        response.set_suggestions(["Quests"])
+        return response
+
+    body = "*Du schaust in dein Questbuch und dort findest du {quests}, die du noch abschließen musst*\n".format(
+        quests="eine Quest" if len(quests) == 1 else "{} Quests".format(len(quests))
+    )
+
+    suggestions = []
+    for quest in quests:
+        body += "\n---\n" \
+                "Quest \"{quest[caption]}\"\n\n" \
+                "Zu erledigen bis: {completed:%d.%m. %H:%M}\n" \
+                "Aktuelle Aufgabe: {quest[part_name]}\n" \
+                "Nächste Schritte: {quest[next_step_text]}".format(quest=quest, completed=datetime.datetime.fromtimestamp(quest["completed"]))
+
+        if int(quest["next_part_num"]) == -1:
+            continue
+
+        next_parts = character_persistent_class.get_quest_parts(quest["quest_id"], quest["next_part_num"])
+        if next_parts is None or len(next_parts) == 0:
+            continue
+
+        suggestions.append(MessageController.get_command("Quest-Aufgabe").get_example({
+            **params,
+            "command": None,
+            "caption": "\"" + quest["caption"] + "\"",
+            "part_name": "\"" + next_parts[0]["part_name"] + "\""
+        }))
+
+    body += "\n---"
+
+    response.add_response_messages(message_controller.split_messages(body, "---"))
+    response.set_suggestions(suggestions)
+    return response

@@ -31,6 +31,7 @@ import time
 import traceback
 
 from configparser import SectionProxy
+from datetime import datetime
 from pathlib import Path
 from typing import List
 
@@ -361,4 +362,8 @@ print("[{bot_username}] Debug URL: {host}:{port}/debug".format(
     bot_username=bot_username,
     host=default_config.get("RemoteHostIP", "www.example.com"),
     port=default_config.get("RemotePort", "8080")
+))
+print("[{bot_username}] Started: {now:%d.%m.%Y %H:%M:%S}".format(
+    bot_username=bot_username,
+    now=datetime.now()
 ))

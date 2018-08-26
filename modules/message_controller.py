@@ -198,7 +198,8 @@ class MessageCommand:
             return self.command[lang]
         return self.command["de"]
 
-    def get_example(self, params: dict, lang):
+    def get_example(self, params: dict):
+        lang = get_locale().language
         example_str = params["command"] if "command" in params and params["command"] is not None else (self.command[lang] if lang in self.command else self.command["de"])
         for x in self.params[1:]:
             name = x.get_name()
