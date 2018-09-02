@@ -1,0 +1,539 @@
+<html>
+<head>
+    <script src="https://cdn.jsdelivr.net/npm/tinymce@4.8.2/tinymce.min.js" integrity="sha256-2DEM8ybpCSGNF32f4l2CcIx5gTWZvKIQn+3bZDL4Qkc=" crossorigin="anonymous"></script>
+    <script src="https://code.jquery.com/jquery-3.3.1.min.js" integrity="sha256-FgpCb/KJQlLNfOu91ta32o/NMZxltwRo8QtmkMRdAu8=" crossorigin="anonymous"></script>
+    <script type="text/javascript">
+        function loadTinymce() {
+            var config = {
+                force_br_newlines: true,
+                force_p_newlines: false,
+                forced_root_block: '', // Needed for 3.x
+                selector: 'td',
+                menubar: false,
+                inline: true,
+                plugins: [
+                    'link',
+                    'textcolor',
+                    'lists',
+                    'contextmenu',
+                    'autolink',
+                    'paste'
+                ],
+                paste_as_text: true,
+                toolbar: [
+                    'undo redo | bold italic underline | fontselect fontsizeselect',
+                    'forecolor backcolor | alignleft aligncenter alignright alignfull | numlist bullist outdent indent'
+                ],
+                valid_elements: 'p[style],strong,em,span[style],a[href],ul,ol,li,h3,div',
+                valid_styles: {
+                    '*': 'font-size,font-family,color,text-decoration,text-align'
+                }
+            };
+
+            tinymce.init(config);
+        }
+
+        function unloadTinymce() {
+            tinymce.remove("td");
+            var contents = document.getElementsByTagName("td");
+            for (i = 0; i < contents.length; i++) {
+                contents[i].removeAttribute("id");
+                contents[i].removeAttribute("style");
+                contents[i].removeAttribute("spellcheck");
+            }
+        }
+
+        function getHtml() {
+            unloadTinymce();
+            $(".highlight-hover").removeClass("highlight-hover");
+            $(".highlight-hover-worse").removeClass("highlight-hover-worse");
+            $(".highlight-hover-better").removeClass("highlight-hover-better");
+            $(".highlight-hover-same").removeClass("highlight-hover-same");
+            $(".highlight-click").removeClass("highlight-click");
+            $(".highlight-click-worse").removeClass("highlight-click-worse");
+            $(".highlight-click-better").removeClass("highlight-click-better");
+            $(".highlight-click-same").removeClass("highlight-click-same");
+            $("[class=\"\"]").removeAttr("class");
+            return $("body").html();
+        }
+
+        $(document).on("mouseenter", "[data-talent]", function (e) {
+            var target = $(e.currentTarget);
+            var level = parseInt(target.closest("[data-stat-level]").attr("data-stat-level"));
+            $("[data-talent=\"" + target.attr("data-talent") + "\"]").each(function (k, v) {
+                $(this).addClass("highlight-hover");
+                if (target.text() !== $(this).text()) {
+                    if (parseInt($(this).closest("[data-stat-level]").attr("data-stat-level")) < level) {
+                        $(this).addClass("highlight-hover-worse");
+                    } else {
+                        $(this).addClass("highlight-hover-better");
+                    }
+                } else {
+                    $(this).addClass("highlight-hover-same");
+                }
+            })
+        });
+
+        $(document).on("mouseleave", "[data-talent]", function (e) {
+            var target = $(e.currentTarget);
+            $("[data-talent=\"" + target.attr("data-talent") + "\"]").each(function (k, v) {
+                $(this).removeClass("highlight-hover");
+                $(this).removeClass("highlight-hover-worse");
+                $(this).removeClass("highlight-hover-better");
+                $(this).removeClass("highlight-hover-same");
+            })
+        });
+
+        $(document).on("click", "[data-talent]", function (e) {
+            var target = $(e.currentTarget);
+            var level = parseInt(target.closest("[data-stat-level]").attr("data-stat-level"));
+            if (target.hasClass("highlight-click")) {
+                $("[data-talent=\"" + target.attr("data-talent") + "\"]").each(function (k, v) {
+                    $(this).removeClass("highlight-click");
+                    $(this).removeClass("highlight-click-worse");
+                    $(this).removeClass("highlight-click-better");
+                    $(this).removeClass("highlight-click-same");
+                });
+            } else {
+                $("[data-talent=\"" + target.attr("data-talent") + "\"]").each(function (k, v) {
+                    $(this).addClass("highlight-click");
+                    if (target.text() !== $(this).text()) {
+                        if (parseInt($(this).closest("[data-stat-level]").attr("data-stat-level")) < level) {
+                            $(this).addClass("highlight-click-worse");
+                        } else {
+                            $(this).addClass("highlight-click-better");
+                        }
+                    } else {
+                        $(this).addClass("highlight-click-same");
+                    }
+                });
+            }
+        });
+    </script>
+    <style>
+        body {
+            margin: 0;
+        }
+
+        table {
+            border-collapse: collapse;
+        }
+
+        td, th {
+            border: 1px solid black;
+            padding: 5px;
+        }
+
+        tr > td {
+            width: calc(100% / 7);
+        }
+
+        tr > th:first-child {
+            width: 40px;
+        }
+
+        [data-stat-level="1"],
+        [data-stat-level="2"] {
+            background: #ffc5c5;
+        }
+
+        [data-stat-level="3"],
+        [data-stat-level="4"] {
+            background: #ffffcd;
+        }
+
+        [data-stat-level="5"],
+        [data-stat-level="6"],
+        [data-stat-level="7"] {
+            background: white;
+        }
+
+        [data-stat-level="8"],
+        [data-stat-level="9"],
+        [data-stat-level="10"] {
+            background: #dbffdb;
+        }
+
+        td ul {
+            margin: -5px;
+            padding-left: 0;
+            list-style: none;
+        }
+
+        td li {
+            background: rgba(0, 0, 0, 0.1);
+            margin-top: 5px;
+            padding: 5px;
+        }
+
+        td li:not([data-talent]) {
+            border-right: 5px solid red;
+            padding-right: 0;
+            border-left: 5px solid red;
+            padding-left: 0;
+        }
+
+        td h3 {
+            margin: 0;
+        }
+
+        td div[data-talent] {
+            background: rgba(0, 0, 0, 0.2);
+            margin: 10px -5px -5px;
+            padding: 5px;
+        }
+
+        td div:not([data-talent]) {
+            border-right: 5px solid red;
+            padding-right: 0;
+            border-left: 5px solid red;
+            padding-left: 0;
+        }
+
+        [data-talent].highlight-hover {
+            background: #607d8b;
+            color: white;
+        }
+
+        [data-talent].highlight-hover-worse {
+            background: #7f0000;
+        }
+
+        [data-talent].highlight-hover-better {
+            background: #005f00;
+        }
+
+        [data-talent].highlight-click {
+            background: #607d8b;
+            color: white;
+        }
+
+        [data-talent].highlight-click-worse {
+            background: #7f0000;
+        }
+
+        [data-talent].highlight-click-better {
+            background: #005f00;
+        }
+    </style>
+</head>
+<body>
+<table>
+    <tbody>
+    <tr>
+        <th>Lvl.</th>
+        <th data-stat-name="strength">Stärke</th>
+        <th data-stat-name="perception">Wahrnehmung</th>
+        <th data-stat-name="endurance">Ausdauer</th>
+        <th data-stat-name="charisma">Charisma</th>
+        <th data-stat-name="knowledge">Wissen</th>
+        <th data-stat-name="magic">Magie</th>
+        <th data-stat-name="agility">Geschicklichkeit</th>
+    </tr>
+    <tr>
+        <th>1</th>
+        <td data-stat-level="1" data-stat-name="strength">Du kannst:
+            <ul>
+                <li data-talent="fight">nicht kämpfen (weder Fern- noch Nahkampf).</li>
+                <li data-talent="carry">keine schweren Gegenstände oder Rüstungen tragen oder ziehen.</li>
+                <li data-talent="inventory">nur wenige Gegenstände in deinem Inventar bei dir führen.</li>
+            </ul>
+        </td>
+        <td data-stat-level="1" data-stat-name="perception">... Stell dir vor du bist ein Maulwurf und du hast die Neigung dich trotz Karte zu verlaufen.</td>
+        <td data-stat-level="1" data-stat-name="endurance">Du benötigst für einen Wegpunkt zum nächsten 10 anstatt 5 Minuten. Du kannst maximal 5 Minuten kämpfen und musst dann
+            eine 5 minütige Pause machen
+        </td>
+        <td data-stat-level="1" data-stat-name="charisma">NPCs verkaufen dir alles 25% teurer. Du kannst nicht mit dem anderen Geschlecht kommunizieren ohne rot anzulaufen und bist
+            sehr sehr schüchtern.
+        </td>
+        <td data-stat-level="1" data-stat-name="knowledge">Dir fällt es schwer Gespräche zu führen und anderen mitzuteilen was du willst, da du eine fremdartige Sprache sprichst.
+        </td>
+        <td data-stat-level="1" data-stat-name="magic">Wird an dir Magie angewendet, so bekommst du dadurch mehr Schaden. Heilung über Magie dauert länger.</td>
+        <td data-stat-level="1" data-stat-name="agility">
+            <ul>
+                <li data-talent="patient">Du bist sehr tollpatschig und sehr ungeduldig.</li>
+                <li data-talent="avoiding">Du kannst häufig gegnerischen Attacken nicht ausweichen.</li>
+                <li data-talent="strike-probability">Du verfehlst meistens die anvisierte Stelle (Nahkampf).</li>
+                <li data-talent="far-attack">Du kannst keine Fernangriffe ausführen.</li>
+            </ul>
+        </td>
+    </tr>
+    <tr>
+        <th>2</th>
+        <td data-stat-level="2" data-stat-name="strength">Du kannst:
+            <ul>
+                <li data-talent="fight">kämpfen, aber deine Nahkampf-Angriffe sind sehr schwach.</li>
+                <li data-talent="carry">keine schweren Gegenstände oder Rüstungen tragen oder ziehen.</li>
+                <li data-talent="inventory">einige, aber nicht übermäßig viele Gegenstände in deinem Inventar bei dir führen.</li>
+            </ul>
+        </td>
+        <td data-stat-level="2" data-stat-name="perception">Du nimmst nur Gegner in deinem Sichtfeld wahr, auch wenn die Gegner sehr laut hinter dir sind. Du hast die Neigung dich
+            trotz Karte zu verlaufen.
+        </td>
+        <td data-stat-level="2" data-stat-name="endurance">Du benötigst für einen Wegpunkt zum nächsten 7,5 anstatt 5 Minuten. Du kannst maximal 15 Minuten kämpfen und musst dann
+            eine 5 minütige Pause machen
+        </td>
+        <td data-stat-level="2" data-stat-name="charisma">NPCs verkaufen dir alles 10% teurer. Du bist schüchtern.</td>
+        <td data-stat-level="2" data-stat-name="knowledge">Dir fällt es schwer Gespräche zu führen und anderen mitzuteilen was du willst. Du spricht die Sprache nur gebrochen und
+            manchmal kaufst du Dinge, die du gar nicht haben wolltest.
+        </td>
+        <td data-stat-level="2" data-stat-name="magic">Du kannst keine Magie anwenden</td>
+        <td data-stat-level="2" data-stat-name="agility">
+            <ul>
+                <li data-talent="patient">Du bist sehr tollpatschig.</li>
+                <li data-talent="avoiding">Du kannst häufig gegnerischen Attacken nicht ausweichen.</li>
+                <li data-talent="strike-probability">Du verfehlst manchmal die anvisierte Stelle (Nahkampf).</li>
+                <li data-talent="far-attack">Du kannst keine Fernangriffe ausführen.</li>
+            </ul>
+        </td>
+    </tr>
+    <tr>
+        <th>3</th>
+        <td data-stat-level="3" data-stat-name="strength">Du kannst:
+            <ul>
+                <li data-talent="fight">kämpfen, aber deine Nahkampf-Angriffe sind nur mäßig stark.</li>
+                <li data-talent="carry">schwere Gegenstände / Rüstungen tragen oder ziehen, jedoch verlangsamen die dich um 3x.</li>
+                <li data-talent="inventory">einige, aber nicht übermäßig viele Gegenstände in deinem Inventar bei dir führen.</li>
+            </ul>
+        </td>
+        <td data-stat-level="3" data-stat-name="perception">Gegner können sich mit Leichtigkeit an dich heranschleichen.</td>
+        <td data-stat-level="3" data-stat-name="endurance">Du kannst maximal 30 Minuten kämpfen und musst dann eine 5 minütige Pause machen</td>
+        <td data-stat-level="3" data-stat-name="charisma">Du wirkst auf Andere wie ein durchschnittlicher Askobarer</td>
+        <td data-stat-level="3" data-stat-name="knowledge">Du beherrscht die Sprache und kannst normal mit anderen kommunizieren</td>
+        <td data-stat-level="3" data-stat-name="magic">Du erhältst 1 Magiepunkt.</td>
+        <td data-stat-level="3" data-stat-name="agility">Du kannst dir aussuchen:
+            <ul>
+                <li data-talent="patient">Du bist manchmal tollpatschig.</li>
+                <li data-talent="avoiding">Du kannst häufig gegnerischen Attacken nicht ausweichen.</li>
+            </ul>
+            <ul>
+                <li data-talent="strike-probability">Du triffst häufig die anvisierte Stelle (Nahkampf).</li>
+                <li data-talent="far-attack">Du kannst keine Fernangriffe ausführen.</li>
+            </ul>
+        </td>
+    </tr>
+    <tr>
+        <th>4</th>
+        <td data-stat-level="4" data-stat-name="strength">Du kannst:
+            <ul>
+                <li data-talent="fight">kämpfen, aber deine Nahkampf-Angriffe sind nur mäßig stark.</li>
+                <li data-talent="carry">schwere Gegenstände / Rüstungen tragen oder ziehen, jedoch verlangsamen die dich um 2x.</li>
+                <li data-talent="inventory">einige, aber nicht übermäßig viele Gegenstände in deinem Inventar bei dir führen.</li>
+            </ul>
+        </td>
+        <td data-stat-level="4" data-stat-name="perception">Gegner sind in der Lage sich an dich heranzuschleichen.</td>
+        <td data-stat-level="4" data-stat-name="endurance">Du kannst ohne Pause kämpfen</td>
+        <td data-stat-level="4" data-stat-name="charisma">Du kannst mit Glück bei NPCs bis zu 10% des Verkaufspreises einsparen. (Würfeln)</td>
+        <td data-stat-level="4" data-stat-name="knowledge">Du beherrscht die Sprache und kannst normal mit anderen kommunizieren. Du weißt manchmal mehr als Andere über ein Thema,
+            aber bist in keinem Thema richtig gut.
+        </td>
+        <td data-stat-level="4" data-stat-name="magic">Du erhältst 2 Magiepunkte.</td>
+        <td data-stat-level="4" data-stat-name="agility">
+            <ul>
+                <li data-talent="patient">Dir passieren nur manchmal kleine Missgeschicke.</li>
+                <li data-talent="avoiding">Du kannst nur langsamen gegnerischen Attacken ausweichen.</li>
+                <li data-talent="strike-probability">Du triffst meistens die anvisierte Stelle (Nahkampf).</li>
+                <li data-talent="far-attack">Du kannst Fernangriffe aus 3 Metern ausführen. Diese treffen häufig, aber nicht immer.</li>
+            </ul>
+        </td>
+    </tr>
+    <tr>
+        <th>5</th>
+        <td data-stat-level="5" data-stat-name="strength">Du kannst:
+            <ul>
+                <li data-talent="fight">kämpfen und deine Nahkampf-Angriffe sind stark.</li>
+                <li data-talent="carry">schwere Gegenstände / Rüstungen tragen oder ziehen, jedoch verlangsamen die dich um 2x.</li>
+                <li data-talent="inventory">einige, aber nicht übermäßig viele Gegenstände in deinem Inventar bei dir führen.</li>
+            </ul>
+        </td>
+        <td data-stat-level="5" data-stat-name="perception">Gegner sind in der Lage sich an dich heranzuschleichen. Du kannst Spuren lesen ODER Fährten verfolgen</td>
+        <td data-stat-level="5" data-stat-name="endurance">Du kannst schwimmen und ohne Pause kämpfen</td>
+        <td data-stat-level="5" data-stat-name="charisma">Du kannst mit Glück bei NPCs bis zu 25% des Verkaufspreises einsparen. (Würfeln)</td>
+        <td data-stat-level="5" data-stat-name="knowledge">Du hast 2 Wissenspunkte</td>
+        <td data-stat-level="5" data-stat-name="magic">Du erhältst 3 Magiepunkte.</td>
+        <td data-stat-level="5" data-stat-name="agility">
+            <ul>
+                <li data-talent="patient">Du bist sehr geschickt und geduldig.</li>
+                <li data-talent="avoiding">Du kannst normalen gegnerischen Attacken ausweichen.</li>
+                <li data-talent="strike-probability">Auch in hitzigen Auseinandersetzungen triffst du meistens genau dein Ziel (Nahkampf).</li>
+                <li data-talent="far-attack">Du kannst Fernangriffe aus 10 Metern ausführen. Diese treffen häufig, aber nicht immer.</li>
+            </ul>
+        </td>
+    </tr>
+    <tr>
+        <th>6</th>
+        <td data-stat-level="6" data-stat-name="strength">Du kannst:
+            <ul>
+                <li data-talent="fight">kämpfen und deine Nahkampf-Angriffe sind sehr stark: Du kannst einen Wolf mit einem Angriff töten.</li>
+                <li data-talent="carry">schwere Gegenstände / Rüstungen tragen oder ziehen, jedoch verlangsamen die dich um 1,5x.</li>
+                <li data-talent="inventory">deutlich mehr Gegenstände in deinem Inventar bei dir führen.</li>
+            </ul>
+        </td>
+        <td data-stat-level="6" data-stat-name="perception">Du bemerkst Gegner auch wenn sich diese versuchen an dich heranzuschleichen. Du kannst Spuren lesen ODER Fährten
+            verfolgen
+        </td>
+        <td data-stat-level="6" data-stat-name="endurance">Du kannst schwimmen und ohne Pause kämpfen</td>
+        <td data-stat-level="6" data-stat-name="charisma">Du kannst mit Glück bei NPCs bis zu 25% des Verkaufspreises einsparen. (@rpghelper würfeln 5+D20)</td>
+        <td data-stat-level="6" data-stat-name="knowledge">Du hast 3 Wissenspunkte</td>
+        <td data-stat-level="6" data-stat-name="magic">Du erhältst 5 Magiepunkte.</td>
+        <td data-stat-level="6" data-stat-name="agility">
+            <ul>
+                <li data-talent="patient">Du bist sehr geschickt und geduldig.</li>
+                <li data-talent="avoiding">Du kannst normalen gegnerischen Attacken ausweichen.</li>
+                <li data-talent="strike-probability">Auch in hitzigen Auseinandersetzungen triffst du meistens genau dein Ziel (Nahkampf).</li>
+                <li data-talent="far-attack">Du kannst Fernangriffe aus 50 Metern ausführen. Diese treffen häufig, aber nicht immer.</li>
+            </ul>
+        </td>
+    </tr>
+    <tr>
+        <th>7</th>
+        <td data-stat-level="7" data-stat-name="strength">Du kannst:
+            <ul>
+                <li data-talent="fight">kämpfen und deine Nahkampf-Angriffe sind sehr stark: Du kannst einen Wolf mit einem Angriff töten.</li>
+                <li data-talent="carry">schwere Gegenstände / Rüstungen tragen oder ziehen, ohne dass dich diese verlangsamen.</li>
+                <li data-talent="inventory">deutlich mehr Gegenstände in deinem Inventar bei dir führen.</li>
+            </ul>
+        </td>
+        <td data-stat-level="7" data-stat-name="perception">Du bemerkst Gegner auch wenn sich diese versuchen an dich heranzuschleichen. Du kannst Spuren lesen ODER Fährten
+            verfolgen
+        </td>
+        <td data-stat-level="7" data-stat-name="endurance">Du kannst schwimmen und ohne Pause kämpfen und benötigst für einen Wegpunkt nur 3 Minuten.</td>
+        <td data-stat-level="7" data-stat-name="charisma">Du kannst mit Glück bei NPCs bis zu 50% des Verkaufspreises einsparen (@rpghelper würfeln 10+D40) und manchmal geben sie
+            dir einen Vertrauensvorschuss (später bezahlen)
+        </td>
+        <td data-stat-level="7" data-stat-name="knowledge">Du hast 5 Wissenspunkte</td>
+        <td data-stat-level="7" data-stat-name="magic">Du erhältst 7 Magiepunkte.</td>
+        <td data-stat-level="7" data-stat-name="agility">
+            <ul>
+                <li data-talent="patient">Du bist sehr geschickt und geduldig.</li>
+                <li data-talent="avoiding">Du kannst auch schnelleren gegnerischen Attacken ausweichen.</li>
+                <li data-talent="strike-probability">Auch in hitzigen Auseinandersetzungen triffst du immer genau dein Ziel (Nahkampf).</li>
+                <li data-talent="far-attack">Du kannst Fernangriffe aus 150 Metern ausführen. Diese treffen häufig, aber nicht immer.</li>
+            </ul>
+        </td>
+    </tr>
+    <tr>
+        <th>8</th>
+        <td data-stat-level="8" data-stat-name="strength">Du kannst:
+            <ul>
+                <li data-talent="fight">kämpfen und deine Nahkampf-Angriffe sind sehr stark: Du kannst zwei Wölfe gleichzeitig mit einem Angriff töten.</li>
+                <li data-talent="carry">sehr schwere Gegenstände (bis 200kg)/ Rüstungen tragen oder ziehen, ohne dass dich diese verlangsamen.</li>
+                <li data-talent="inventory">deutlich mehr Gegenstände in deinem Inventar bei dir führen.</li>
+            </ul>
+        </td>
+        <td data-stat-level="8" data-stat-name="perception">Du bemerkst Gegner auch wenn sich diese versuchen an dich heranzuschleichen. Du kannst Spuren lesen ODER Fährten
+            verfolgen
+        </td>
+        <td data-stat-level="8" data-stat-name="endurance">Du kannst dich entweder dauerhaft 3x schneller bewegen oder 20x schneller für maximal 3 Wegpunkte (Gilt auch im Kampf)
+        </td>
+        <td data-stat-level="8" data-stat-name="charisma">Du kannst mit Glück bei NPCs bis zu 50% des Verkaufspreises einsparen (@rpghelper würfeln 10+D40) und manchmal geben sie
+            dir einen Vertrauensvorschuss (später bezahlen) und du kannst schwächere Gegner bekehren (max. 1 + 20 Minuten)
+        </td>
+        <td data-stat-level="8" data-stat-name="knowledge">Du hast 7 Wissenspunkte</td>
+        <td data-stat-level="8" data-stat-name="magic">Du erhältst 9 Magiepunkte.</td>
+        <td data-stat-level="8" data-stat-name="agility">
+            <ul>
+                <li data-talent="patient">Du bist sehr geschickt und geduldig.</li>
+                <li data-talent="avoiding">Du kannst auch schnelleren gegnerischen Attacken ausweichen.</li>
+                <li data-talent="strike-probability">Auch in hitzigen Auseinandersetzungen triffst du immer genau dein Ziel (Nahkampf).</li>
+                <li data-talent="far-attack">Du kannst Fernangriffe aus 500 Metern ausführen. Diese treffen häufig, aber nicht immer.</li>
+            </ul>
+        </td>
+    </tr>
+    <tr>
+        <th>9</th>
+        <td data-stat-level="9" data-stat-name="strength">Du kannst:
+            <ul>
+                <li data-talent="fight">kämpfen und deine Nahkampf-Angriffe sind sehr stark: Du kannst zwei Wölfe gleichzeitig mit einem Angriff töten.</li>
+                <li data-talent="carry">sehr schwere Gegenstände (bis 200kg)/ Rüstungen tragen oder ziehen, ohne dass dich diese verlangsamen.</li>
+                <li data-talent="inventory">deutlich mehr Gegenstände in deinem Inventar bei dir führen.</li>
+            </ul>
+            <div data-talent="steel-muscles">
+                <h3>Bonus Stahlmuskeln</h3>
+                Deine Muskeln sind so stark, dass dir mäßig starke Gegner keinen physichen Schaden machen können.
+            </div>
+        </td>
+        <td data-stat-level="9" data-stat-name="perception">Du nimmst selbst unsichtbare, versteckte und nicht direkt sichtbare Kreaturen in unmittelbarer Nähe wahr</td>
+        <td data-stat-level="9" data-stat-name="endurance">Du kannst dich entweder dauerhaft 3x schneller bewegen oder 20x schneller für maximal 3 Wegpunkte (Gilt auch im Kampf)
+        </td>
+        <td data-stat-level="9" data-stat-name="charisma">Du kannst mit Glück bei NPCs bis zu 50% des Verkaufspreises einsparen (@rpghelper würfeln 20+D30) und manchmal geben sie
+            dir einen Vertrauensvorschuss (später bezahlen) und du kannst der Stärke eines Werwolfs bekehren (max. 2 + 30 Minuten)
+        </td>
+        <td data-stat-level="9" data-stat-name="knowledge">Du hast 9 Wissenspunkte</td>
+        <td data-stat-level="9" data-stat-name="magic">Du erhältst 11 Magiepunkte.</td>
+        <td data-stat-level="9" data-stat-name="agility">
+            <ul>
+                <li data-talent="patient">Du bist sehr geschickt und geduldig.</li>
+                <li data-talent="avoiding">Du kannst fast allen gegnerischen Attacken ausweichen.</li>
+                <li data-talent="strike-probability">Auch in hitzigen Auseinandersetzungen triffst du immer genau dein Ziel (Nahkampf).</li>
+                <li data-talent="far-attack">Du kannst Fernangriffe aus 500 Metern ausführen. Diese treffen fast immer.</li>
+            </ul>
+        </td>
+    </tr>
+    <tr>
+        <th>10</th>
+        <td data-stat-level="10" data-stat-name="strength">Du kannst:
+            <ul>
+                <li data-talent="fight">kämpfen und deine Nahkampf-Angriffe sind unglaublich stark: Du kannst zwei Wölfe gleichzeitig mit einem Angriff töten und hast eine
+                    Special-Attacke.
+                </li>
+                <li data-talent="carry">sehr schwere Gegenstände (bis 200kg)/ Rüstungen tragen oder ziehen, ohne dass dich diese verlangsamen.</li>
+                <li data-talent="inventory">deutlich mehr Gegenstände in deinem Inventar bei dir führen.</li>
+            </ul>
+            <div data-talent="steel-muscles">
+                <h3>Bonus Stahlmuskeln</h3>
+                Deine Muskeln sind so stark, dass dir mäßig starke Gegner keinen physichen Schaden machen können.
+            </div>
+            <div data-talent="special-attack">
+                <h3>Bonus Special-Attacke:</h3>
+                Du kannst einen Angriff ausführen, der einem Boss-Gegner mit einem Schlag 50% seiner Energie abzieht oder 4 schwache Gegner gleichzeitig töten. Dieser Angriff muss
+                danach 30 Minuten aufladen.
+            </div>
+        </td>
+        <td data-stat-level="10" data-stat-name="perception">Du nimmst selbst unsichtbare, versteckte und nicht direkt sichtbare Kreaturen im Umkreis von 300 Metern wahr</td>
+        <td data-stat-level="10" data-stat-name="endurance">Du kannst dich entweder dauerhaft 3x schneller bewegen oder 20x schneller für maximal 3 Wegpunkte (Gilt auch im Kampf)
+        </td>
+        <td data-stat-level="10" data-stat-name="charisma">Du kannst mit Glück bei NPCs bis zu 70% des Verkaufspreises einsparen (@rpghelper würfeln 35+D35) und manchmal geben sie
+            dir einen Vertrauensvorschuss (später bezahlen) und du alle nicht-Boss-Monster bekehren (max. 3 + 45 Minuten)
+        </td>
+        <td data-stat-level="10" data-stat-name="knowledge">Du hast 12 Wissenspunkte</td>
+        <td data-stat-level="10" data-stat-name="magic">Du erhältst 14 Magiepunkte.</td>
+        <td data-stat-level="10" data-stat-name="agility">
+            <ul>
+                <li data-talent="patient">Du bist sehr geschickt und geduldig.</li>
+                <li data-talent="avoiding">Du kannst fast allen gegnerischen Attacken ausweichen.</li>
+                <li data-talent="strike-probability">Auch in hitzigen Auseinandersetzungen triffst du immer genau dein Ziel (Nahkampf).</li>
+                <li data-talent="far-attack">Du kannst Fernangriffe aus 500 Metern ausführen. Diese treffen immer.</li>
+            </ul>
+        </td>
+    </tr>
+    <tr>
+        <th></th>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+    </tr>
+    <tr>
+        <th>add</th>
+        <td data-stat-add-text="true" data-stat-name="strength"></td>
+        <td data-stat-add-text="true" data-stat-name="perception"></td>
+        <td data-stat-add-text="true" data-stat-name="endurance"></td>
+        <td data-stat-add-text="true" data-stat-name="charisma"></td>
+        <td data-stat-add-text="true" data-stat-name="knowledge">Wissenspunkte lassen sich auf folgende Teilgebiete aufteilen. Dabei ist erweitertes Wissen über ein Teilgebiet ein
+            Punkt und Profiwissen zwei Punkte: Askobar (Kulturen, Wesen), Skalandis allgemein, Monster (Schwächen, Angriffe, Profi: Du kannst mit Glück Angriffe vorhersehen),
+            Schmieden, Alchemie/Kräuterkunde, Kampftaktiken etc.
+        </td>
+        <td data-stat-add-text="true" data-stat-name="magic">Magiepunkte beschreibt deine magischen Ausrichtungen Möchtest du eine Fähigkeit profihaft Meistern können, kostet das 4
+            Magiepunkte. Als Amateur 2 Magiepunkte und als Anfänger einen. Ausrichtungen sind z.B. Illusion, Heilung, Schutz, die einzelnen Elementare, etc. Teleportieren oder
+            Portale eröffnen ist nicht möglich
+        </td>
+        <td data-stat-add-text="true" data-stat-name="agility"></td>
+    </tr>
+    </tbody>
+</table>
+</body>
+</html>
