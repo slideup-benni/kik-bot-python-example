@@ -1,5 +1,6 @@
 <html>
 <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <script src="https://cdn.jsdelivr.net/npm/tinymce@4.8.2/tinymce.min.js" integrity="sha256-2DEM8ybpCSGNF32f4l2CcIx5gTWZvKIQn+3bZDL4Qkc=" crossorigin="anonymous"></script>
     <script src="https://code.jquery.com/jquery-3.3.1.min.js" integrity="sha256-FgpCb/KJQlLNfOu91ta32o/NMZxltwRo8QtmkMRdAu8=" crossorigin="anonymous"></script>
     <script type="text/javascript">
@@ -84,6 +85,23 @@
             })
         });
 
+        $(document).on("dblclick", "[data-stat-name]", function (e) {
+            var target = $(e.currentTarget);
+
+            $("[data-stat-name=\""+target.attr("data-stat-name")+"\"] .highlight-click").removeClass("highlight-click");
+            $("[data-stat-name=\""+target.attr("data-stat-name")+"\"] .highlight-click-worse").removeClass("highlight-click-worse");
+            $("[data-stat-name=\""+target.attr("data-stat-name")+"\"] .highlight-click-better").removeClass("highlight-click-better");
+            $("[data-stat-name=\""+target.attr("data-stat-name")+"\"] .highlight-click-same").removeClass("highlight-click-same");
+
+            if(!target.hasClass("highlight-click")) {
+                target.addClass("highlight-click");
+                target.find("[data-talent]").trigger("click");
+            } else {
+                target.removeClass("highlight-click");
+            }
+
+        });
+
         $(document).on("click", "[data-talent]", function (e) {
             var target = $(e.currentTarget);
             var level = parseInt(target.closest("[data-stat-level]").attr("data-stat-level"));
@@ -94,6 +112,7 @@
                     $(this).removeClass("highlight-click-better");
                     $(this).removeClass("highlight-click-same");
                 });
+                $("[data-stat-name=\""+target.closest("[data-stat-name]").attr("data-stat-name")+"\"]").removeClass("highlight-click");
             } else {
                 $("[data-talent=\"" + target.attr("data-talent") + "\"]").each(function (k, v) {
                     $(this).addClass("highlight-click");
@@ -152,6 +171,28 @@
         [data-stat-level="9"],
         [data-stat-level="10"] {
             background: #dbffdb;
+        }
+
+        [data-stat-level="1"].highlight-click,
+        [data-stat-level="2"].highlight-click {
+            background: #ff8d92;
+        }
+
+        [data-stat-level="3"].highlight-click,
+        [data-stat-level="4"].highlight-click {
+            background: #fcff9b;
+        }
+
+        [data-stat-level="5"].highlight-click,
+        [data-stat-level="6"].highlight-click,
+        [data-stat-level="7"].highlight-click {
+            background: #d4d4d4;
+        }
+
+        [data-stat-level="8"].highlight-click,
+        [data-stat-level="9"].highlight-click,
+        [data-stat-level="10"].highlight-click {
+            background: #95ff90;
         }
 
         td ul {
@@ -240,11 +281,18 @@
             </ul>
         </td>
         <td data-stat-level="1" data-stat-name="perception">... Stell dir vor du bist ein Maulwurf und du hast die Neigung dich trotz Karte zu verlaufen.</td>
-        <td data-stat-level="1" data-stat-name="endurance">Du benötigst für einen Wegpunkt zum nächsten 10 anstatt 5 Minuten. Du kannst maximal 5 Minuten kämpfen und musst dann
-            eine 5 minütige Pause machen
+        <td data-stat-level="1" data-stat-name="endurance">
+            <ul>
+                <li>Du benötigst für einen Wegpunkt zum nächsten 10 Minuten.</li>
+                <li>Du kannst maximal 5 Minuten kämpfen und musst dann eine 5 minütige Pause machen.</li>
+                <li>Du kannst nicht schwimmen.</li>
+            </ul>
         </td>
-        <td data-stat-level="1" data-stat-name="charisma">NPCs verkaufen dir alles 25% teurer. Du kannst nicht mit dem anderen Geschlecht kommunizieren ohne rot anzulaufen und bist
-            sehr sehr schüchtern.
+        <td data-stat-level="1" data-stat-name="charisma">
+            <ul>
+                <li data-talent="negotiating-skill">NPCs verkaufen dir alles 25% teurer.</li>
+                <li data-talent="bashful">Du kannst nicht mit dem anderen Geschlecht kommunizieren ohne rot anzulaufen und bist sehr sehr schüchtern.</li>
+            </ul>
         </td>
         <td data-stat-level="1" data-stat-name="knowledge">Dir fällt es schwer Gespräche zu führen und anderen mitzuteilen was du willst, da du eine fremdartige Sprache sprichst.
         </td>
@@ -270,10 +318,19 @@
         <td data-stat-level="2" data-stat-name="perception">Du nimmst nur Gegner in deinem Sichtfeld wahr, auch wenn die Gegner sehr laut hinter dir sind. Du hast die Neigung dich
             trotz Karte zu verlaufen.
         </td>
-        <td data-stat-level="2" data-stat-name="endurance">Du benötigst für einen Wegpunkt zum nächsten 7,5 anstatt 5 Minuten. Du kannst maximal 15 Minuten kämpfen und musst dann
-            eine 5 minütige Pause machen
+        <td data-stat-level="2" data-stat-name="endurance">
+            <ul>
+                <li>Du benötigst für einen Wegpunkt zum nächsten 7,5 Minuten.</li>
+                <li>Du kannst maximal 15 Minuten kämpfen und musst dann eine 5 minütige Pause machen.</li>
+                <li>Du kannst nicht schwimmen.</li>
+            </ul>
         </td>
-        <td data-stat-level="2" data-stat-name="charisma">NPCs verkaufen dir alles 10% teurer. Du bist schüchtern.</td>
+        <td data-stat-level="2" data-stat-name="charisma">
+            <ul>
+                <li data-talent="negotiating-skill">NPCs verkaufen dir alles 10% teurer.</li>
+                <li data-talent="bashful">Du bist schüchtern.</li>
+            </ul>
+        </td>
         <td data-stat-level="2" data-stat-name="knowledge">Dir fällt es schwer Gespräche zu führen und anderen mitzuteilen was du willst. Du spricht die Sprache nur gebrochen und
             manchmal kaufst du Dinge, die du gar nicht haben wolltest.
         </td>
@@ -297,8 +354,18 @@
             </ul>
         </td>
         <td data-stat-level="3" data-stat-name="perception">Gegner können sich mit Leichtigkeit an dich heranschleichen.</td>
-        <td data-stat-level="3" data-stat-name="endurance">Du kannst maximal 30 Minuten kämpfen und musst dann eine 5 minütige Pause machen</td>
-        <td data-stat-level="3" data-stat-name="charisma">Du wirkst auf Andere wie ein durchschnittlicher Askobarer</td>
+        <td data-stat-level="3" data-stat-name="endurance">
+            <ul>
+                <li>Du benötigst für einen Wegpunkt zum nächsten 5 Minuten.</li>
+                <li>Du kannst maximal 30 Minuten kämpfen und musst dann eine 5 minütige Pause machen.</li>
+                <li>Du kannst nicht schwimmen.</li>
+            </ul>
+        </td>
+        <td data-stat-level="3" data-stat-name="charisma">
+            <ul>
+                <li data-talent="negotiating-skill">NPCs verkaufen dir alles zum angegebenen Preis und du kannst nicht verhandeln.</li>
+            </ul>
+        </td>
         <td data-stat-level="3" data-stat-name="knowledge">Du beherrscht die Sprache und kannst normal mit anderen kommunizieren</td>
         <td data-stat-level="3" data-stat-name="magic">Du erhältst 1 Magiepunkt.</td>
         <td data-stat-level="3" data-stat-name="agility">Du kannst dir aussuchen:
@@ -322,8 +389,18 @@
             </ul>
         </td>
         <td data-stat-level="4" data-stat-name="perception">Gegner sind in der Lage sich an dich heranzuschleichen.</td>
-        <td data-stat-level="4" data-stat-name="endurance">Du kannst ohne Pause kämpfen</td>
-        <td data-stat-level="4" data-stat-name="charisma">Du kannst mit Glück bei NPCs bis zu 10% des Verkaufspreises einsparen. (Würfeln)</td>
+        <td data-stat-level="4" data-stat-name="endurance">
+            <ul>
+                <li>Du benötigst für einen Wegpunkt zum nächsten 5 Minuten.</li>
+                <li>Du kannst ohne Pause kämpfen.</li>
+                <li>Du kannst nicht schwimmen.</li>
+            </ul>
+        </td>
+        <td data-stat-level="4" data-stat-name="charisma">
+            <ul>
+                <li data-talent="negotiating-skill">Du kannst über D10 des Preises verhandeln (Würfeln).</li>
+            </ul>
+        </td>
         <td data-stat-level="4" data-stat-name="knowledge">Du beherrscht die Sprache und kannst normal mit anderen kommunizieren. Du weißt manchmal mehr als Andere über ein Thema,
             aber bist in keinem Thema richtig gut.
         </td>
@@ -347,8 +424,18 @@
             </ul>
         </td>
         <td data-stat-level="5" data-stat-name="perception">Gegner sind in der Lage sich an dich heranzuschleichen. Du kannst Spuren lesen ODER Fährten verfolgen</td>
-        <td data-stat-level="5" data-stat-name="endurance">Du kannst schwimmen und ohne Pause kämpfen</td>
-        <td data-stat-level="5" data-stat-name="charisma">Du kannst mit Glück bei NPCs bis zu 25% des Verkaufspreises einsparen. (Würfeln)</td>
+        <td data-stat-level="5" data-stat-name="endurance">
+            <ul>
+                <li>Du benötigst für einen Wegpunkt zum nächsten 5 Minuten.</li>
+                <li>Du kannst ohne Pause kämpfen.</li>
+                <li>Du kannst kurze Strecken schwimmen.</li>
+            </ul>
+        </td>
+        <td data-stat-level="5" data-stat-name="charisma">
+            <ul>
+                <li data-talent="negotiating-skill">Du kannst über D25 des Preises verhandeln (Würfeln).</li>
+            </ul>
+        </td>
         <td data-stat-level="5" data-stat-name="knowledge">Du hast 2 Wissenspunkte</td>
         <td data-stat-level="5" data-stat-name="magic">Du erhältst 3 Magiepunkte.</td>
         <td data-stat-level="5" data-stat-name="agility">
@@ -372,8 +459,19 @@
         <td data-stat-level="6" data-stat-name="perception">Du bemerkst Gegner auch wenn sich diese versuchen an dich heranzuschleichen. Du kannst Spuren lesen ODER Fährten
             verfolgen
         </td>
-        <td data-stat-level="6" data-stat-name="endurance">Du kannst schwimmen und ohne Pause kämpfen</td>
-        <td data-stat-level="6" data-stat-name="charisma">Du kannst mit Glück bei NPCs bis zu 25% des Verkaufspreises einsparen. (@rpghelper würfeln 5+D20)</td>
+        <td data-stat-level="6" data-stat-name="endurance">
+            <ul>
+                <li>Du benötigst für einen Wegpunkt zum nächsten 5 Minuten.</li>
+                <li>Du kannst ohne Pause kämpfen.</li>
+                <li>Du kannst auch längere Strecken schwimmen.</li>
+            </ul>
+        </td>
+        <td data-stat-level="6" data-stat-name="charisma">Du kannst:
+            <ul>
+                <li data-talent="negotiating-skill">über 10+D15 des Preises verhandeln (Würfeln).</li>
+                <li data-talent="convince">zu 33% neutrale NPCs überzeugen. (max. 2 Versuche pro 10 Min.)</li>
+            </ul>
+        </td>
         <td data-stat-level="6" data-stat-name="knowledge">Du hast 3 Wissenspunkte</td>
         <td data-stat-level="6" data-stat-name="magic">Du erhältst 5 Magiepunkte.</td>
         <td data-stat-level="6" data-stat-name="agility">
@@ -397,9 +495,18 @@
         <td data-stat-level="7" data-stat-name="perception">Du bemerkst Gegner auch wenn sich diese versuchen an dich heranzuschleichen. Du kannst Spuren lesen ODER Fährten
             verfolgen
         </td>
-        <td data-stat-level="7" data-stat-name="endurance">Du kannst schwimmen und ohne Pause kämpfen und benötigst für einen Wegpunkt nur 3 Minuten.</td>
-        <td data-stat-level="7" data-stat-name="charisma">Du kannst mit Glück bei NPCs bis zu 50% des Verkaufspreises einsparen (@rpghelper würfeln 10+D40) und manchmal geben sie
-            dir einen Vertrauensvorschuss (später bezahlen)
+        <td data-stat-level="7" data-stat-name="endurance">
+            <ul>
+                <li>Du benötigst für einen Wegpunkt zum nächsten 3 Minuten.</li>
+                <li>Du kannst ohne Pause kämpfen.</li>
+                <li>Du kannst auch längere Strecken schwimmen.</li>
+            </ul>
+        </td>
+        <td data-stat-level="7" data-stat-name="charisma">Du kannst:
+            <ul>
+                <li data-talent="negotiating-skill">über 15+D35 des Preises verhandeln (Würfeln).</li>
+                <li data-talent="convince">zu 50% neutrale NPCs überzeugen.&nbsp;(max. 2 Versuche pro 10 Min.)</li>
+            </ul>
         </td>
         <td data-stat-level="7" data-stat-name="knowledge">Du hast 5 Wissenspunkte</td>
         <td data-stat-level="7" data-stat-name="magic">Du erhältst 7 Magiepunkte.</td>
@@ -424,10 +531,21 @@
         <td data-stat-level="8" data-stat-name="perception">Du bemerkst Gegner auch wenn sich diese versuchen an dich heranzuschleichen. Du kannst Spuren lesen ODER Fährten
             verfolgen
         </td>
-        <td data-stat-level="8" data-stat-name="endurance">Du kannst dich entweder dauerhaft 3x schneller bewegen oder 20x schneller für maximal 3 Wegpunkte (Gilt auch im Kampf)
+        <td data-stat-level="8" data-stat-name="endurance">
+            <ul>
+                <li>Du benötigst für einen Wegpunkt zum nächsten 2 Minuten ODER Du kannst 3 Wegpunkte überspringen und musst dann eine 9 minütige Pause machen (gilt auch im Kampf
+                    Geschwindigkeit x20).
+                </li>
+                <li>Du kannst ohne Pause kämpfen.</li>
+                <li>Du kannst auch längere Strecken schwimmen.</li>
+            </ul>
         </td>
-        <td data-stat-level="8" data-stat-name="charisma">Du kannst mit Glück bei NPCs bis zu 50% des Verkaufspreises einsparen (@rpghelper würfeln 10+D40) und manchmal geben sie
-            dir einen Vertrauensvorschuss (später bezahlen) und du kannst schwächere Gegner bekehren (max. 1 + 20 Minuten)
+        <td data-stat-level="8" data-stat-name="charisma">Du kannst:
+            <ul>
+                <li data-talent="negotiating-skill">über 20+D30 des Preises verhandeln (Würfeln).</li>
+                <li data-talent="convince">alle neutralen NPCs überzeugen.&nbsp;(max. 2 pro 10 Min.)</li>
+                <li data-talent="proselytise">schwächere Gegner bekehren (max. 1 für 20 Minuten)</li>
+            </ul>
         </td>
         <td data-stat-level="8" data-stat-name="knowledge">Du hast 7 Wissenspunkte</td>
         <td data-stat-level="8" data-stat-name="magic">Du erhältst 9 Magiepunkte.</td>
@@ -456,8 +574,12 @@
         <td data-stat-level="9" data-stat-name="perception">Du nimmst selbst unsichtbare, versteckte und nicht direkt sichtbare Kreaturen in unmittelbarer Nähe wahr</td>
         <td data-stat-level="9" data-stat-name="endurance">Du kannst dich entweder dauerhaft 3x schneller bewegen oder 20x schneller für maximal 3 Wegpunkte (Gilt auch im Kampf)
         </td>
-        <td data-stat-level="9" data-stat-name="charisma">Du kannst mit Glück bei NPCs bis zu 50% des Verkaufspreises einsparen (@rpghelper würfeln 20+D30) und manchmal geben sie
-            dir einen Vertrauensvorschuss (später bezahlen) und du kannst der Stärke eines Werwolfs bekehren (max. 2 + 30 Minuten)
+        <td data-stat-level="9" data-stat-name="charisma">Du kannst:
+            <ul>
+                <li data-talent="negotiating-skill">über 30+D20 des Preises verhandeln (Würfeln).</li>
+                <li data-talent="convince">alle neutralen NPCs überzeugen.&nbsp;(max. 3 pro 10 Min.)</li>
+                <li data-talent="proselytise">Gegner mit der Stärke eines Werwolfs bekehren (max. 2 für 30 Minuten)</li>
+            </ul>
         </td>
         <td data-stat-level="9" data-stat-name="knowledge">Du hast 9 Wissenspunkte</td>
         <td data-stat-level="9" data-stat-name="magic">Du erhältst 11 Magiepunkte.</td>
@@ -493,8 +615,12 @@
         <td data-stat-level="10" data-stat-name="perception">Du nimmst selbst unsichtbare, versteckte und nicht direkt sichtbare Kreaturen im Umkreis von 300 Metern wahr</td>
         <td data-stat-level="10" data-stat-name="endurance">Du kannst dich entweder dauerhaft 3x schneller bewegen oder 20x schneller für maximal 3 Wegpunkte (Gilt auch im Kampf)
         </td>
-        <td data-stat-level="10" data-stat-name="charisma">Du kannst mit Glück bei NPCs bis zu 70% des Verkaufspreises einsparen (@rpghelper würfeln 35+D35) und manchmal geben sie
-            dir einen Vertrauensvorschuss (später bezahlen) und du alle nicht-Boss-Monster bekehren (max. 3 + 45 Minuten)
+        <td data-stat-level="10" data-stat-name="charisma">Du kannst:
+            <ul>
+                <li data-talent="negotiating-skill">über 35+D35 des Preises verhandeln (Würfeln).</li>
+                <li data-talent="convince">alle neutralen NPCs überzeugen.&nbsp;(max. 3 pro 10 Min.)</li>
+                <li data-talent="proselytise">alle nicht-Boss-Monster bekehren. (max. 3 für 45 Minuten)</li>
+            </ul>
         </td>
         <td data-stat-level="10" data-stat-name="knowledge">Du hast 12 Wissenspunkte</td>
         <td data-stat-level="10" data-stat-name="magic">Du erhältst 14 Magiepunkte.</td>
