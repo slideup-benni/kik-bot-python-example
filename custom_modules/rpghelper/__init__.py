@@ -29,14 +29,47 @@ def parse_work_string(time_str, regex_str):
             stat_points = int(param)
     return timedelta(**time_params), stat_points
 
+def claws_time_adjust(minutes, claw_per_minute):
+    percent_loose = 0.2
+    claws_per_min_before = claw_per_minute
+    claws_per_min_after = claws_per_min_before * percent_loose
+    transition_start_min = 6 * 60
+    transition_end_min = 10 * 60
+
+    _transition_mid_min = (transition_start_min + transition_end_min) / 2
+
+    claws_for_min_before = lambda min: min * claws_per_min_before
+    claws_for_min_after = lambda min: claws_per_min_after * (min - _transition_mid_min) + claws_for_min_before(_transition_mid_min)
+    claws_for_min_triangle = lambda min: ((claws_for_min_after(transition_end_min) - claws_for_min_before(transition_start_min)) / (
+                transition_end_min - transition_start_min)) * min + (claws_for_min_after(transition_end_min) - (
+                (claws_for_min_after(transition_end_min) - claws_for_min_before(transition_start_min)) / (transition_end_min - transition_start_min)) * transition_end_min)
+    claws_for_min_trans = lambda min: claws_for_min_triangle(min) / 2 + (
+                claws_for_min_after(min) * (min - transition_start_min) / (transition_end_min - transition_start_min) + claws_for_min_before(min) * (
+                    1 - (min - transition_start_min) / (transition_end_min - transition_start_min))) / 2
+    claws_for_min = lambda min: claws_for_min_before(min) if min < transition_start_min else claws_for_min_trans(min) if min < transition_end_min else claws_for_min_after(min)
+    return claws_for_min(minutes)
 
 def work(minutes, difficulty, stat_points):
     appendix = ""
     if difficulty == 1:
         claw_per_minute = 0.125
+        if minutes > 11*60:
+            min_blocked = random.randint(0, math.ceil(minutes/60-11))*15
+            if min_blocked >= 45:
+                appendix = " und bist für {hours}:{minutes:02d} Stunden erschöpft. Du kannst in der Zeit weder arbeiten noch kämpfen.".format(
+                    hours=math.floor(min_blocked/60),
+                    minutes=min_blocked - math.floor(min_blocked / 60) * 60
+                )
     elif difficulty == 2:
         # 1/288*(x + 1/2)² + 7/128
         claw_per_minute = 1 / 288 * pow(int(stat_points) + 1 / 2, 2) + 7 / 128
+        if minutes > 8*60:
+            min_blocked = random.randint(0, math.ceil(minutes/60-8))*30
+            if min_blocked != 0:
+                appendix = " und bist für {hours}:{minutes:02d} Stunden erschöpft. Du kannst in der Zeit weder arbeiten noch kämpfen.".format(
+                    hours=math.floor(min_blocked/60),
+                    minutes=min_blocked - math.floor(min_blocked / 60) * 60
+                )
     else:
         # 1/240*(x + 3)² - 1/240
         claw_per_minute = 1 / 240 * pow(int(stat_points) + 3, 2) - 1 / 240
@@ -53,7 +86,7 @@ def work(minutes, difficulty, stat_points):
     else:
         time = "{minutes} Minuten".format(minutes=form_minutes)
 
-    claws_base = math.ceil(claw_per_minute * minutes)
+    claws_base = math.ceil(claws_time_adjust(minutes, claw_per_minute))
     result = claws_base + random.randint(0, claws_base)
 
     # expl = "[{from_claws}~{to_claws}]".format(
