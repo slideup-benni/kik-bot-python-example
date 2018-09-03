@@ -88,12 +88,12 @@
         $(document).on("dblclick", "[data-stat-name]", function (e) {
             var target = $(e.currentTarget);
 
-            $("[data-stat-name=\""+target.attr("data-stat-name")+"\"] .highlight-click").removeClass("highlight-click");
-            $("[data-stat-name=\""+target.attr("data-stat-name")+"\"] .highlight-click-worse").removeClass("highlight-click-worse");
-            $("[data-stat-name=\""+target.attr("data-stat-name")+"\"] .highlight-click-better").removeClass("highlight-click-better");
-            $("[data-stat-name=\""+target.attr("data-stat-name")+"\"] .highlight-click-same").removeClass("highlight-click-same");
+            $("[data-stat-name=\"" + target.attr("data-stat-name") + "\"] .highlight-click").removeClass("highlight-click");
+            $("[data-stat-name=\"" + target.attr("data-stat-name") + "\"] .highlight-click-worse").removeClass("highlight-click-worse");
+            $("[data-stat-name=\"" + target.attr("data-stat-name") + "\"] .highlight-click-better").removeClass("highlight-click-better");
+            $("[data-stat-name=\"" + target.attr("data-stat-name") + "\"] .highlight-click-same").removeClass("highlight-click-same");
 
-            if(!target.hasClass("highlight-click")) {
+            if (!target.hasClass("highlight-click")) {
                 target.addClass("highlight-click");
                 target.find("[data-talent]").trigger("click");
             } else {
@@ -112,7 +112,7 @@
                     $(this).removeClass("highlight-click-better");
                     $(this).removeClass("highlight-click-same");
                 });
-                $("[data-stat-name=\""+target.closest("[data-stat-name]").attr("data-stat-name")+"\"]").removeClass("highlight-click");
+                $("[data-stat-name=\"" + target.closest("[data-stat-name]").attr("data-stat-name") + "\"]").removeClass("highlight-click");
             } else {
                 $("[data-talent=\"" + target.attr("data-talent") + "\"]").each(function (k, v) {
                     $(this).addClass("highlight-click");
@@ -196,22 +196,31 @@
         }
 
         td ul {
-            margin: -5px;
+            margin: 0 -5px;
             padding-left: 0;
             list-style: none;
         }
 
-        td li {
-            background: rgba(0, 0, 0, 0.1);
-            margin-top: 5px;
-            padding: 5px;
+        td > ul:not(:last-child) {
+            margin-bottom: 20px;
         }
 
-        td li:not([data-talent]) {
+        td li {
+            padding: 0 5px;
+            margin-bottom: 3px;
+        }
+
+        td li:before {
+            display: inline;
+            content: "- ";
+        }
+
+        td[data-stat-level] li:not([data-talent]) {
             border-right: 5px solid red;
             padding-right: 0;
             border-left: 5px solid red;
             padding-left: 0;
+            background: rgba(255, 0, 0, 0.3);
         }
 
         td h3 {
@@ -224,11 +233,12 @@
             padding: 5px;
         }
 
-        td div:not([data-talent]) {
+        td[data-stat-level] div:not([data-talent]) {
             border-right: 5px solid red;
             padding-right: 0;
             border-left: 5px solid red;
             padding-left: 0;
+            background: rgba(255, 0, 0, 0.3);
         }
 
         [data-talent].highlight-hover {
@@ -280,12 +290,19 @@
                 <li data-talent="inventory">nur wenige Gegenstände in deinem Inventar bei dir führen.</li>
             </ul>
         </td>
-        <td data-stat-level="1" data-stat-name="perception">... Stell dir vor du bist ein Maulwurf und du hast die Neigung dich trotz Karte zu verlaufen.</td>
+        <td data-stat-level="1" data-stat-name="perception">
+            <ul>
+                <li data-talent="visibility">... Stell dir vor du bist ein Maulwurf.</li>
+                <li data-talent="sense-of-orientation">Du hast die Neigung dich trotz Karte zu verlaufen.</li>
+                <li data-talent="tracker">Du kannst keine Spuren lesen und keine Fährten verfolgen.</li>
+                <li data-talent="detect-weakness">Du kannst keine gegnerischen Schwachstellen erkennen.</li>
+            </ul>
+        </td>
         <td data-stat-level="1" data-stat-name="endurance">
             <ul>
-                <li>Du benötigst für einen Wegpunkt zum nächsten 10 Minuten.</li>
-                <li>Du kannst maximal 5 Minuten kämpfen und musst dann eine 5 minütige Pause machen.</li>
-                <li>Du kannst nicht schwimmen.</li>
+                <li data-talent="speed">Du benötigst für einen Wegpunkt zum nächsten 10 Minuten.</li>
+                <li data-talent="staying-power">Du kannst maximal 5 Minuten kämpfen und musst dann eine 5 minütige Pause machen.</li>
+                <li data-talent="fly-swim">Du kannst nicht schwimmen oder fliegen.</li>
             </ul>
         </td>
         <td data-stat-level="1" data-stat-name="charisma">
@@ -294,9 +311,18 @@
                 <li data-talent="bashful">Du kannst nicht mit dem anderen Geschlecht kommunizieren ohne rot anzulaufen und bist sehr sehr schüchtern.</li>
             </ul>
         </td>
-        <td data-stat-level="1" data-stat-name="knowledge">Dir fällt es schwer Gespräche zu führen und anderen mitzuteilen was du willst, da du eine fremdartige Sprache sprichst.
+        <td data-stat-level="1" data-stat-name="knowledge">
+            <ul>
+                <li data-talent="speech">Dir fällt es schwer Gespräche zu führen und anderen mitzuteilen was du willst, da du eine fremdartige Sprache sprichst.</li>
+                <li data-talent="bad-buy">Du kaufst manchmal Dinge, die du gar nicht haben wolltest.</li>
+                <li data-talent="read-write">Du kannst nicht lesen oder schreiben.</li>
+            </ul>
         </td>
-        <td data-stat-level="1" data-stat-name="magic">Wird an dir Magie angewendet, so bekommst du dadurch mehr Schaden. Heilung über Magie dauert länger.</td>
+        <td data-stat-level="1" data-stat-name="magic">
+            <ul>
+                <li data-talent="magic-diversity">Wird an dir Magie angewendet, so bekommst du dadurch mehr Schaden. Heilung über Magie dauert länger.</li>
+            </ul>
+        </td>
         <td data-stat-level="1" data-stat-name="agility">
             <ul>
                 <li data-talent="patient">Du bist sehr tollpatschig und sehr ungeduldig.</li>
@@ -315,14 +341,19 @@
                 <li data-talent="inventory">einige, aber nicht übermäßig viele Gegenstände in deinem Inventar bei dir führen.</li>
             </ul>
         </td>
-        <td data-stat-level="2" data-stat-name="perception">Du nimmst nur Gegner in deinem Sichtfeld wahr, auch wenn die Gegner sehr laut hinter dir sind. Du hast die Neigung dich
-            trotz Karte zu verlaufen.
+        <td data-stat-level="2" data-stat-name="perception">
+            <ul>
+                <li data-talent="visibility">Du nimmst nur Gegner wahr die in unmittelbarer Nähe vor dir sind, auch wenn die Gegner sehr laut hinter dir sind.</li>
+                <li data-talent="sense-of-orientation">Du hast die Neigung dich trotz Karte zu verlaufen.</li>
+                <li data-talent="tracker">Du kannst keine Spuren lesen und keine Fährten verfolgen.</li>
+                <li data-talent="detect-weakness">Du kannst keine gegnerischen Schwachstellen erkennen.</li>
+            </ul>
         </td>
         <td data-stat-level="2" data-stat-name="endurance">
             <ul>
-                <li>Du benötigst für einen Wegpunkt zum nächsten 7,5 Minuten.</li>
-                <li>Du kannst maximal 15 Minuten kämpfen und musst dann eine 5 minütige Pause machen.</li>
-                <li>Du kannst nicht schwimmen.</li>
+                <li data-talent="speed">Du benötigst für einen Wegpunkt zum nächsten 7,5 Minuten.</li>
+                <li data-talent="staying-power">Du kannst maximal 15 Minuten kämpfen und musst dann eine 5 minütige Pause machen.</li>
+                <li data-talent="fly-swim">Du kannst nicht schwimmen oder fliegen.</li>
             </ul>
         </td>
         <td data-stat-level="2" data-stat-name="charisma">
@@ -331,10 +362,18 @@
                 <li data-talent="bashful">Du bist schüchtern.</li>
             </ul>
         </td>
-        <td data-stat-level="2" data-stat-name="knowledge">Dir fällt es schwer Gespräche zu führen und anderen mitzuteilen was du willst. Du spricht die Sprache nur gebrochen und
-            manchmal kaufst du Dinge, die du gar nicht haben wolltest.
+        <td data-stat-level="2" data-stat-name="knowledge">
+            <ul>
+                <li data-talent="speech">Dir fällt es schwer Gespräche zu führen und anderen mitzuteilen was du willst, da du die Sprache nur gebrochen sprichst.</li>
+                <li data-talent="bad-buy">Du kaufst manchmal Dinge, die du gar nicht haben wolltest.</li>
+                <li data-talent="read-write">Du kannst nicht lesen oder schreiben.</li>
+            </ul>
         </td>
-        <td data-stat-level="2" data-stat-name="magic">Du kannst keine Magie anwenden</td>
+        <td data-stat-level="2" data-stat-name="magic">
+            <ul>
+                <li data-talent="magic-diversity">Du kannst keine Magie anwenden</li>
+            </ul>
+        </td>
         <td data-stat-level="2" data-stat-name="agility">
             <ul>
                 <li data-talent="patient">Du bist sehr tollpatschig.</li>
@@ -353,21 +392,37 @@
                 <li data-talent="inventory">einige, aber nicht übermäßig viele Gegenstände in deinem Inventar bei dir führen.</li>
             </ul>
         </td>
-        <td data-stat-level="3" data-stat-name="perception">Gegner können sich mit Leichtigkeit an dich heranschleichen.</td>
+        <td data-stat-level="3" data-stat-name="perception">
+            <ul>
+                <li data-talent="visibility">Gegner können sich nur leise von hinten an dich heranschleichen.</li>
+                <li data-talent="sense-of-orientation">Es kann passieren, dass du dich trotz Karte verläufst.</li>
+                <li data-talent="tracker">Du kannst keine Spuren lesen und keine Fährten verfolgen.</li>
+                <li data-talent="detect-weakness">Du kannst keine gegnerischen Schwachstellen erkennen.</li>
+            </ul>
+        </td>
         <td data-stat-level="3" data-stat-name="endurance">
             <ul>
-                <li>Du benötigst für einen Wegpunkt zum nächsten 5 Minuten.</li>
-                <li>Du kannst maximal 30 Minuten kämpfen und musst dann eine 5 minütige Pause machen.</li>
-                <li>Du kannst nicht schwimmen.</li>
+                <li data-talent="speed">Du benötigst für einen Wegpunkt zum nächsten 5 Minuten.</li>
+                <li data-talent="staying-power">Du kannst maximal 30 Minuten kämpfen und musst dann eine 5 minütige Pause machen.</li>
+                <li data-talent="fly-swim">Du kannst nicht schwimmen oder fliegen.</li>
             </ul>
         </td>
         <td data-stat-level="3" data-stat-name="charisma">
             <ul>
-                <li data-talent="negotiating-skill">NPCs verkaufen dir alles zum angegebenen Preis und du kannst nicht verhandeln.</li>
+                <li data-talent="negotiating-skill">NPCs verkaufen dir alles zum angegebenen Preis, aber du kannst nicht verhandeln.</li>
             </ul>
         </td>
-        <td data-stat-level="3" data-stat-name="knowledge">Du beherrscht die Sprache und kannst normal mit anderen kommunizieren</td>
-        <td data-stat-level="3" data-stat-name="magic">Du erhältst 1 Magiepunkt.</td>
+        <td data-stat-level="3" data-stat-name="knowledge">
+            <ul>
+                <li data-talent="speech">Du beherrscht die hier gesprochene Sprache und kannst normal mit anderen kommunizieren.</li>
+                <li data-talent="read-write">Du kannst nicht lesen oder schreiben.</li>
+            </ul>
+        </td>
+        <td data-stat-level="3" data-stat-name="magic">
+            <ul>
+                <li data-talent="magic-diversity">Du kannst bis zu einem Magiepunkt für deine Magieschulen verwenden.</li>
+            </ul>
+        </td>
         <td data-stat-level="3" data-stat-name="agility">Du kannst dir aussuchen:
             <ul>
                 <li data-talent="patient">Du bist manchmal tollpatschig.</li>
@@ -388,12 +443,19 @@
                 <li data-talent="inventory">einige, aber nicht übermäßig viele Gegenstände in deinem Inventar bei dir führen.</li>
             </ul>
         </td>
-        <td data-stat-level="4" data-stat-name="perception">Gegner sind in der Lage sich an dich heranzuschleichen.</td>
+        <td data-stat-level="4" data-stat-name="perception">
+            <ul>
+                <li data-talent="visibility">Gegner können sich nur leise von hinten an dich heranschleichen.</li>
+                <li data-talent="sense-of-orientation">Es kann passieren, dass du dich trotz Karte verläufst.</li>
+                <li data-talent="tracker">Du kannst Spuren lesen ODER Fährten verfolgen.</li>
+                <li data-talent="detect-weakness">Wenn du einen Gegner 60 Minuten lang beobachtest, kannst du Schwachstellen erkennen.</li>
+            </ul>
+        </td>
         <td data-stat-level="4" data-stat-name="endurance">
             <ul>
-                <li>Du benötigst für einen Wegpunkt zum nächsten 5 Minuten.</li>
-                <li>Du kannst ohne Pause kämpfen.</li>
-                <li>Du kannst nicht schwimmen.</li>
+                <li data-talent="speed">Du benötigst für einen Wegpunkt zum nächsten 5 Minuten.</li>
+                <li data-talent="staying-power">Du kannst ohne Pause kämpfen.</li>
+                <li data-talent="fly-swim">Du kannst nicht schwimmen oder fliegen.</li>
             </ul>
         </td>
         <td data-stat-level="4" data-stat-name="charisma">
@@ -401,10 +463,18 @@
                 <li data-talent="negotiating-skill">Du kannst über D10 des Preises verhandeln (Würfeln).</li>
             </ul>
         </td>
-        <td data-stat-level="4" data-stat-name="knowledge">Du beherrscht die Sprache und kannst normal mit anderen kommunizieren. Du weißt manchmal mehr als Andere über ein Thema,
-            aber bist in keinem Thema richtig gut.
+        <td data-stat-level="4" data-stat-name="knowledge">
+            <ul>
+                <li data-talent="speech">Du beherrscht die hier gesprochene Sprache und kannst normal mit anderen kommunizieren.</li>
+                <li data-talent="knowledge-points">Du weißt manchmal mehr als Andere über ein Thema, aber bist in keinem Thema richtig gut.</li>
+                <li data-talent="read-write">Du kannst lesen, aber nicht schreiben.</li>
+            </ul>
         </td>
-        <td data-stat-level="4" data-stat-name="magic">Du erhältst 2 Magiepunkte.</td>
+        <td data-stat-level="4" data-stat-name="magic">
+            <ul>
+                <li data-talent="magic-diversity">Du kannst bis zu 2 Magiepunkte für deine Magieschulen verwenden.</li>
+            </ul>
+        </td>
         <td data-stat-level="4" data-stat-name="agility">
             <ul>
                 <li data-talent="patient">Dir passieren nur manchmal kleine Missgeschicke.</li>
@@ -423,12 +493,19 @@
                 <li data-talent="inventory">einige, aber nicht übermäßig viele Gegenstände in deinem Inventar bei dir führen.</li>
             </ul>
         </td>
-        <td data-stat-level="5" data-stat-name="perception">Gegner sind in der Lage sich an dich heranzuschleichen. Du kannst Spuren lesen ODER Fährten verfolgen</td>
+        <td data-stat-level="5" data-stat-name="perception">
+            <ul>
+                <li data-talent="visibility">Du bemerkst Gegner, auch wenn sich diese versuchen, sich leise an dich heran zu schleichen.</li>
+                <li data-talent="sense-of-orientation">Es kann passieren, dass du dich trotz Karte verläufst.</li>
+                <li data-talent="tracker">Du kannst Spuren lesen ODER Fährten verfolgen.</li>
+                <li data-talent="detect-weakness">Wenn du einen Gegner 40 Minuten lang beobachtest, kannst du Schwachstellen erkennen.</li>
+            </ul>
+        </td>
         <td data-stat-level="5" data-stat-name="endurance">
             <ul>
-                <li>Du benötigst für einen Wegpunkt zum nächsten 5 Minuten.</li>
-                <li>Du kannst ohne Pause kämpfen.</li>
-                <li>Du kannst kurze Strecken schwimmen.</li>
+                <li data-talent="speed">Du benötigst für einen Wegpunkt zum nächsten 5 Minuten.</li>
+                <li data-talent="staying-power">Du kannst ohne Pause kämpfen.</li>
+                <li data-talent="fly-swim">Du kannst kurze Strecken schwimmen oder fliegen.</li>
             </ul>
         </td>
         <td data-stat-level="5" data-stat-name="charisma">
@@ -436,8 +513,18 @@
                 <li data-talent="negotiating-skill">Du kannst über D25 des Preises verhandeln (Würfeln).</li>
             </ul>
         </td>
-        <td data-stat-level="5" data-stat-name="knowledge">Du hast 2 Wissenspunkte</td>
-        <td data-stat-level="5" data-stat-name="magic">Du erhältst 3 Magiepunkte.</td>
+        <td data-stat-level="5" data-stat-name="knowledge">
+            <ul>
+                <li data-talent="speech">Du beherrscht die hier gesprochene Sprache und kannst normal mit anderen kommunizieren.</li>
+                <li data-talent="knowledge-points">Du hast 2 Wissenspunkte.</li>
+                <li data-talent="read-write">Du kannst lesen, aber nicht schreiben.</li>
+            </ul>
+        </td>
+        <td data-stat-level="5" data-stat-name="magic">
+            <ul>
+                <li data-talent="magic-diversity">Du kannst bis zu 3 Magiepunkte für deine Magieschulen verwenden.</li>
+            </ul>
+        </td>
         <td data-stat-level="5" data-stat-name="agility">
             <ul>
                 <li data-talent="patient">Du bist sehr geschickt und geduldig.</li>
@@ -456,14 +543,19 @@
                 <li data-talent="inventory">deutlich mehr Gegenstände in deinem Inventar bei dir führen.</li>
             </ul>
         </td>
-        <td data-stat-level="6" data-stat-name="perception">Du bemerkst Gegner auch wenn sich diese versuchen an dich heranzuschleichen. Du kannst Spuren lesen ODER Fährten
-            verfolgen
+        <td data-stat-level="6" data-stat-name="perception">
+            <ul>
+                <li data-talent="visibility">Du bemerkst Gegner, auch wenn sich diese versuchen, sich leise an dich heran zu schleichen.</li>
+                <li data-talent="sense-of-orientation">Du kannst dich nicht verlaufen: Du bemerkst sofort, wenn du einen falschen Weg eingeschlagen hast.</li>
+                <li data-talent="tracker">Du kannst Spuren lesen ODER Fährten verfolgen.</li>
+                <li data-talent="detect-weakness">Wenn du einen Gegner 30 Minuten lang beobachtest, kannst du Schwachstellen erkennen.</li>
+            </ul>
         </td>
         <td data-stat-level="6" data-stat-name="endurance">
             <ul>
-                <li>Du benötigst für einen Wegpunkt zum nächsten 5 Minuten.</li>
-                <li>Du kannst ohne Pause kämpfen.</li>
-                <li>Du kannst auch längere Strecken schwimmen.</li>
+                <li data-talent="speed">Du benötigst für einen Wegpunkt zum nächsten 5 Minuten.</li>
+                <li data-talent="staying-power">Du kannst ohne Pause kämpfen.</li>
+                <li data-talent="fly-swim">Du kannst auch längere Strecken schwimmen oder fliegen.</li>
             </ul>
         </td>
         <td data-stat-level="6" data-stat-name="charisma">Du kannst:
@@ -472,8 +564,18 @@
                 <li data-talent="convince">zu 33% neutrale NPCs überzeugen. (max. 2 Versuche pro 10 Min.)</li>
             </ul>
         </td>
-        <td data-stat-level="6" data-stat-name="knowledge">Du hast 3 Wissenspunkte</td>
-        <td data-stat-level="6" data-stat-name="magic">Du erhältst 5 Magiepunkte.</td>
+        <td data-stat-level="6" data-stat-name="knowledge">
+            <ul>
+                <li data-talent="speech">Du beherrscht die hier gesprochene Sprache und kannst normal mit anderen kommunizieren.</li>
+                <li data-talent="knowledge-points">Du hast 3 Wissenspunkte.</li>
+                <li data-talent="read-write">Du kannst lesen und schreiben.</li>
+            </ul>
+        </td>
+        <td data-stat-level="6" data-stat-name="magic">
+            <ul>
+                <li data-talent="magic-diversity">Du kannst bis zu 5 Magiepunkte für deine Magieschulen verwenden.</li>
+            </ul>
+        </td>
         <td data-stat-level="6" data-stat-name="agility">
             <ul>
                 <li data-talent="patient">Du bist sehr geschickt und geduldig.</li>
@@ -492,14 +594,19 @@
                 <li data-talent="inventory">deutlich mehr Gegenstände in deinem Inventar bei dir führen.</li>
             </ul>
         </td>
-        <td data-stat-level="7" data-stat-name="perception">Du bemerkst Gegner auch wenn sich diese versuchen an dich heranzuschleichen. Du kannst Spuren lesen ODER Fährten
-            verfolgen
+        <td data-stat-level="7" data-stat-name="perception">
+            <ul>
+                <li data-talent="visibility">Du bemerkst Gegner, auch wenn sich diese versuchen, sich leise an dich heran zu schleichen.</li>
+                <li data-talent="sense-of-orientation">Du kannst dich nicht verlaufen: Du bemerkst sofort, wenn du einen falschen Weg eingeschlagen hast.</li>
+                <li data-talent="tracker">Du kannst Spuren lesen und Fährten verfolgen.</li>
+                <li data-talent="detect-weakness">Wenn du einen Gegner 15 Minuten lang beobachtest, kannst du Schwachstellen erkennen.</li>
+            </ul>
         </td>
         <td data-stat-level="7" data-stat-name="endurance">
             <ul>
-                <li>Du benötigst für einen Wegpunkt zum nächsten 3 Minuten.</li>
-                <li>Du kannst ohne Pause kämpfen.</li>
-                <li>Du kannst auch längere Strecken schwimmen.</li>
+                <li data-talent="speed">Du benötigst für einen Wegpunkt zum nächsten 3 Minuten.</li>
+                <li data-talent="staying-power">Du kannst ohne Pause kämpfen.</li>
+                <li data-talent="fly-swim">Du kannst auch längere Strecken schwimmen oder fliegen.</li>
             </ul>
         </td>
         <td data-stat-level="7" data-stat-name="charisma">Du kannst:
@@ -508,8 +615,18 @@
                 <li data-talent="convince">zu 50% neutrale NPCs überzeugen.&nbsp;(max. 2 Versuche pro 10 Min.)</li>
             </ul>
         </td>
-        <td data-stat-level="7" data-stat-name="knowledge">Du hast 5 Wissenspunkte</td>
-        <td data-stat-level="7" data-stat-name="magic">Du erhältst 7 Magiepunkte.</td>
+        <td data-stat-level="7" data-stat-name="knowledge">
+            <ul>
+                <li data-talent="speech">Du beherrscht die hier gesprochene Sprache und kannst normal mit anderen kommunizieren.</li>
+                <li data-talent="knowledge-points">Du hast 5 Wissenspunkte.</li>
+                <li data-talent="read-write">Du kannst lesen und schreiben.</li>
+            </ul>
+        </td>
+        <td data-stat-level="7" data-stat-name="magic">
+            <ul>
+                <li data-talent="magic-diversity">Du kannst bis zu 7 Magiepunkte für deine Magieschulen verwenden.</li>
+            </ul>
+        </td>
         <td data-stat-level="7" data-stat-name="agility">
             <ul>
                 <li data-talent="patient">Du bist sehr geschickt und geduldig.</li>
@@ -528,16 +645,22 @@
                 <li data-talent="inventory">deutlich mehr Gegenstände in deinem Inventar bei dir führen.</li>
             </ul>
         </td>
-        <td data-stat-level="8" data-stat-name="perception">Du bemerkst Gegner auch wenn sich diese versuchen an dich heranzuschleichen. Du kannst Spuren lesen ODER Fährten
-            verfolgen
+        <td data-stat-level="8" data-stat-name="perception">
+            <ul>
+                <li data-talent="visibility">Du bemerkst Gegner, auch wenn sich diese versuchen, sich leise an dich heran zu schleichen.</li>
+                <li data-talent="detector">Du nimmst auch versteckte Kreaturen in deiner unmittelbaren Nähe wahr.</li>
+                <li data-talent="sense-of-orientation">Du kannst dich nicht verlaufen: Du bemerkst sofort, wenn du einen falschen Weg eingeschlagen hast.</li>
+                <li data-talent="tracker">Du kannst Spuren lesen und Fährten verfolgen.</li>
+                <li data-talent="detect-weakness">Wenn du einen Gegner 5 Minuten lang beobachtest, kannst du Schwachstellen erkennen.</li>
+            </ul>
         </td>
         <td data-stat-level="8" data-stat-name="endurance">
             <ul>
-                <li>Du benötigst für einen Wegpunkt zum nächsten 2 Minuten ODER Du kannst 3 Wegpunkte überspringen und musst dann eine 9 minütige Pause machen (gilt auch im Kampf
+                <li data-talent="speed">Du benötigst für einen Wegpunkt zum nächsten 2,5 Minuten ODER Du kannst 3 Wegpunkte überspringen und musst dann eine 9 minütige Pause machen (gilt auch im Kampf
                     Geschwindigkeit x20).
                 </li>
-                <li>Du kannst ohne Pause kämpfen.</li>
-                <li>Du kannst auch längere Strecken schwimmen.</li>
+                <li data-talent="staying-power">Du kannst ohne Pause kämpfen.</li>
+                <li data-talent="fly-swim">Du kannst auch längere Strecken schwimmen oder fliegen.</li>
             </ul>
         </td>
         <td data-stat-level="8" data-stat-name="charisma">Du kannst:
@@ -547,8 +670,18 @@
                 <li data-talent="proselytise">schwächere Gegner bekehren (max. 1 für 20 Minuten)</li>
             </ul>
         </td>
-        <td data-stat-level="8" data-stat-name="knowledge">Du hast 7 Wissenspunkte</td>
-        <td data-stat-level="8" data-stat-name="magic">Du erhältst 9 Magiepunkte.</td>
+        <td data-stat-level="8" data-stat-name="knowledge">
+            <ul>
+                <li data-talent="speech">Du beherrscht die hier gesprochene Sprache und kannst normal mit anderen kommunizieren.</li>
+                <li data-talent="knowledge-points">Du hast 7 Wissenspunkte.</li>
+                <li data-talent="read-write">Du kannst lesen und schreiben.</li>
+            </ul>
+        </td>
+        <td data-stat-level="8" data-stat-name="magic">
+            <ul>
+                <li data-talent="magic-diversity">Du kannst bis zu 9 Magiepunkte für deine Magieschulen verwenden.</li>
+            </ul>
+        </td>
         <td data-stat-level="8" data-stat-name="agility">
             <ul>
                 <li data-talent="patient">Du bist sehr geschickt und geduldig.</li>
@@ -571,8 +704,23 @@
                 Deine Muskeln sind so stark, dass dir mäßig starke Gegner keinen physichen Schaden machen können.
             </div>
         </td>
-        <td data-stat-level="9" data-stat-name="perception">Du nimmst selbst unsichtbare, versteckte und nicht direkt sichtbare Kreaturen in unmittelbarer Nähe wahr</td>
-        <td data-stat-level="9" data-stat-name="endurance">Du kannst dich entweder dauerhaft 3x schneller bewegen oder 20x schneller für maximal 3 Wegpunkte (Gilt auch im Kampf)
+        <td data-stat-level="9" data-stat-name="perception">
+            <ul>
+                <li data-talent="visibility">Gegner können sich nicht unbemerkt an dich heran schleichen.</li>
+                <li data-talent="detector">Du nimmst selbst unsichtbare, versteckte und nicht direkt sichtbare Kreaturen in unmittelbarer Nähe wahr.</li>
+                <li data-talent="sense-of-orientation">Du kannst dich nicht verlaufen: Du bemerkst sofort, wenn du einen falschen Weg eingeschlagen hast.</li>
+                <li data-talent="tracker">Du kannst Spuren lesen und Fährten verfolgen.</li>
+                <li data-talent="detect-weakness">Du erkennst sofort Schwachstellen bei einem Gegner.</li>
+            </ul>
+        </td>
+        <td data-stat-level="9" data-stat-name="endurance">
+            <ul>
+                <li data-talent="speed">Du benötigst für einen Wegpunkt zum nächsten 2 Minuten ODER Du kannst 5 Wegpunkte überspringen und musst dann eine 9 minütige Pause machen (gilt auch im Kampf
+                    Geschwindigkeit x40).
+                </li>
+                <li data-talent="staying-power">Du kannst ohne Pause kämpfen.</li>
+                <li data-talent="fly-swim">Du kannst auch längere Strecken schwimmen oder fliegen.</li>
+            </ul>
         </td>
         <td data-stat-level="9" data-stat-name="charisma">Du kannst:
             <ul>
@@ -581,8 +729,18 @@
                 <li data-talent="proselytise">Gegner mit der Stärke eines Werwolfs bekehren (max. 2 für 30 Minuten)</li>
             </ul>
         </td>
-        <td data-stat-level="9" data-stat-name="knowledge">Du hast 9 Wissenspunkte</td>
-        <td data-stat-level="9" data-stat-name="magic">Du erhältst 11 Magiepunkte.</td>
+        <td data-stat-level="9" data-stat-name="knowledge">
+            <ul>
+                <li data-talent="speech">Du beherrscht die hier gesprochene Sprache und kannst normal mit anderen kommunizieren.</li>
+                <li data-talent="knowledge-points">Du hast 9 Wissenspunkte.</li>
+                <li data-talent="read-write">Du kannst lesen und schreiben.</li>
+            </ul>
+        </td>
+        <td data-stat-level="9" data-stat-name="magic">
+            <ul>
+                <li data-talent="magic-diversity">Du kannst bis zu 11 Magiepunkte für deine Magieschulen verwenden.</li>
+            </ul>
+        </td>
         <td data-stat-level="9" data-stat-name="agility">
             <ul>
                 <li data-talent="patient">Du bist sehr geschickt und geduldig.</li>
@@ -612,8 +770,21 @@
                 danach 30 Minuten aufladen.
             </div>
         </td>
-        <td data-stat-level="10" data-stat-name="perception">Du nimmst selbst unsichtbare, versteckte und nicht direkt sichtbare Kreaturen im Umkreis von 300 Metern wahr</td>
-        <td data-stat-level="10" data-stat-name="endurance">Du kannst dich entweder dauerhaft 3x schneller bewegen oder 20x schneller für maximal 3 Wegpunkte (Gilt auch im Kampf)
+        <td data-stat-level="10" data-stat-name="perception">
+            <ul>
+                <li data-talent="visibility">Gegner können sich nicht unbemerkt an dich heran schleichen.</li>
+                <li data-talent="detector">Du nimmst selbst unsichtbare, versteckte und nicht direkt sichtbare Kreaturen im Umkreis von 300 Metern wahr.</li>
+                <li data-talent="sense-of-orientation">Du kannst dich nicht verlaufen: Du bemerkst sofort, wenn du einen falschen Weg eingeschlagen hast.</li>
+                <li data-talent="tracker">Du kannst Spuren lesen und Fährten verfolgen.</li>
+                <li data-talent="detect-weakness">Du erkennst sofort Schwachstellen bei einem Gegner.</li>
+            </ul>
+        </td>
+        <td data-stat-level="10" data-stat-name="endurance">
+            <ul>
+                <li data-talent="speed">Du bist unglaublich schnell und kannst jeden Punkt auf der Karte sofort erreichen.</li>
+                <li data-talent="staying-power">Du kannst ohne Pause kämpfen.</li>
+                <li data-talent="fly-swim">Du kannst auch längere Strecken schwimmen oder fliegen.</li>
+            </ul>
         </td>
         <td data-stat-level="10" data-stat-name="charisma">Du kannst:
             <ul>
@@ -622,8 +793,23 @@
                 <li data-talent="proselytise">alle nicht-Boss-Monster bekehren. (max. 3 für 45 Minuten)</li>
             </ul>
         </td>
-        <td data-stat-level="10" data-stat-name="knowledge">Du hast 12 Wissenspunkte</td>
-        <td data-stat-level="10" data-stat-name="magic">Du erhältst 14 Magiepunkte.</td>
+        <td data-stat-level="10" data-stat-name="knowledge">
+            <ul>
+                <li data-talent="speech">Du beherrscht die hier gesprochene Sprache und kannst normal mit anderen kommunizieren.</li>
+                <li data-talent="knowledge-points">Du hast 12 Wissenspunkte.</li>
+                <li data-talent="read-write">Du kannst lesen und schreiben.</li>
+            </ul>
+        </td>
+        <td data-stat-level="10" data-stat-name="magic">
+            <ul>
+                <li data-talent="magic-diversity">Du kannst bis zu 14 Magiepunkte für deine Magieschulen verwenden.</li>
+            </ul>
+            <div data-talent="special-magic">
+                <h3>Bonus Special-Attacke oder Teleport:</h3>
+                Du kannst einen Angriff ausführen, der einem Boss-Gegner mit einem Schlag 50% seiner Energie abzieht oder 4 schwache Gegner gleichzeitig töten. Dieser Angriff muss
+                danach 30 Minuten aufladen ODER Du kannst Fähigkeiten erlernen, die es dir erlauben, dich selbst zu begehbaren Orten zu teleportieren.
+            </div>
+        </td>
         <td data-stat-level="10" data-stat-name="agility">
             <ul>
                 <li data-talent="patient">Du bist sehr geschickt und geduldig.</li>
@@ -649,13 +835,39 @@
         <td data-stat-add-text="true" data-stat-name="perception"></td>
         <td data-stat-add-text="true" data-stat-name="endurance"></td>
         <td data-stat-add-text="true" data-stat-name="charisma"></td>
-        <td data-stat-add-text="true" data-stat-name="knowledge">Wissenspunkte lassen sich auf folgende Teilgebiete aufteilen. Dabei ist erweitertes Wissen über ein Teilgebiet ein
-            Punkt und Profiwissen zwei Punkte: Askobar (Kulturen, Wesen), Skalandis allgemein, Monster (Schwächen, Angriffe, Profi: Du kannst mit Glück Angriffe vorhersehen),
-            Schmieden, Alchemie/Kräuterkunde, Kampftaktiken etc.
+        <td data-stat-add-text="true" data-stat-name="knowledge">Folgende Wissensbereiche gibt es:
+            <ul>
+                <li>Askobar (Kulturen, Wesen)</li>
+                <li>Skalandis allgemein</li>
+                <li>Monster (Schwächen, Angriffe, Profi: Du kannst mit Glück Angriffe vorhersehen)</li>
+                <li>Schmieden</li>
+                <li>Runen</li>
+                <li>Sockeln</li>
+                <li>Alchemie/Kräuterkunde</li>
+                <li>Kampftaktiken</li>
+            </ul>
+            Um Wissen über einen Bereich zu besitzen, benötigst du Wissenspunkte:
+            <ul>
+                <li>1 WP für Amateur</li>
+                <li>2 WP für Profi</li>
+            </ul>
         </td>
-        <td data-stat-add-text="true" data-stat-name="magic">Magiepunkte beschreibt deine magischen Ausrichtungen Möchtest du eine Fähigkeit profihaft Meistern können, kostet das 4
-            Magiepunkte. Als Amateur 2 Magiepunkte und als Anfänger einen. Ausrichtungen sind z.B. Illusion, Heilung, Schutz, die einzelnen Elementare, etc. Teleportieren oder
-            Portale eröffnen ist nicht möglich
+        <td data-stat-add-text="true" data-stat-name="magic">Folgende Magieschulen gibt es:
+            <ul>
+                <li>Illusion</li>
+                <li>Heilung</li>
+                <li>Schutz</li>
+                <li>Runenmagie</li>
+                <li>Beschwörung</li>
+                <li>die einzelnen Elemente</li>
+            </ul>
+            Um eine Magieschiule ausüben zu können benötigst du Magiepunkte:
+            <ul>
+                <li>1 MP für Anfänger</li>
+                <li>2 MP für Amateur</li>
+                <li>3 MP für Profi</li>
+            </ul>
+            (Teleportieren, Portale eröffnen oder Stats erhöhen ist nicht möglich.)
         </td>
         <td data-stat-add-text="true" data-stat-name="agility"></td>
     </tr>
