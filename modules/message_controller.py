@@ -7,6 +7,8 @@ import sqlite3
 
 from flask_babel import gettext as _, get_locale
 from kik.messages import Message, StartChattingMessage, TextMessage, SuggestedResponseKeyboard, PictureMessage
+from werkzeug.exceptions import BadRequest
+
 from modules.character_persistent_class import CharacterPersistentClass
 from modules.kik_user import User, LazyKikUser, LazyRandomKikUser
 
@@ -421,6 +423,12 @@ class MessageController:
 
     def get_config(self):
         return self.config
+
+    def is_static_file(self, path):
+        return False
+
+    def send_file(self, path):
+        return BadRequest()
 
     def process_message(self, message: Message, user: User):
 

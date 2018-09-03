@@ -1,4 +1,3 @@
-import csv
 import datetime
 import json
 import math
@@ -8,6 +7,8 @@ import re
 import sqlite3
 import time
 
+from flask import send_file
+from bs4 import BeautifulSoup, NavigableString, Tag
 from modules.character_persistent_class import CharacterPersistentClass
 from modules.message_controller import MessageController, MessageCommand, MessageParam, CommandMessageResponse
 from datetime import timedelta
@@ -75,6 +76,8 @@ class CharacterStats:
         7: {"de": "Geschicklichkeit", "en": "agility"},
     }
 
+    bs = None
+
     def __init__(self, db_stats):
         self.db_stats = db_stats
 
@@ -135,21 +138,43 @@ class CharacterStats:
         return all_names
 
     @staticmethod
-    def get_stat_text(stat_id, stat_points):
+    def get_stat_text(stat_id, stat_points, add_text=True, reload_bs=False):
         if stat_points == 0:
             return None
 
-        with open(os.path.dirname(os.path.realpath(__file__)) + '/rpghelper_stat_texts.csv', 'r') as csv_file:
-            stat_texts = csv.DictReader(csv_file, delimiter=";", quotechar="\"")
-            rows = []
-            for row in stat_texts:
-                rows.append(row)
+        if CharacterStats.bs is None or reload_bs is True:
+            CharacterStats.bs = BeautifulSoup(open(os.path.dirname(os.path.realpath(__file__)) + '/rpghelper_stat_texts.html', 'r'), "html.parser")
 
-            text = rows[stat_points-1][str(int(stat_id))]
-            if rows[11][str(int(stat_id))] != "":
-                text += "\n\n"+rows[11][str(int(stat_id))]
+        base_results = CharacterStats.bs.find_all(attrs={'data-stat-name': CharacterStats.get_stat_names('en')[stat_id], 'data-stat-level': stat_points})
 
+        if len(base_results) < 1:
+            return None
+
+
+        def filter_text(result):
+            for tag in result.find_all('li'):
+                tag.insert(0, NavigableString("- "))
+
+            for tag in result.find_all('ul'): # type: Tag
+                tag.append(NavigableString("\n"))
+
+            for tag in result.find_all('h3'):
+                tag.insert(0, NavigableString("*"))
+                tag.append(NavigableString(":*"))
+
+            text = result.getText()
+            text = text.strip()
+            text = re.sub(' +', ' ', text)
+            text = re.sub('\n *\n', '\n', text)
+            text = re.sub('\n *', '\n', text)
             return text
+
+        if add_text is True:
+            add_results = CharacterStats.bs.find_all(attrs={'data-stat-name': CharacterStats.get_stat_names('en')[stat_id], 'data-stat-add-text': True})
+            if len(add_results) >= 1 and add_results[0].getText() != '':
+                return filter_text(base_results[0]) + "\n\n" + filter_text(add_results[0])
+
+        return filter_text(base_results[0])
 
     @staticmethod
     def stat_id_from_name(name, lang):
@@ -447,6 +472,18 @@ class ModuleMessageController(MessageController):
         MessageController.__init__(self, bot_username, config_file)
         self.character_persistent_class = ModuleCharacterPersistentClass(self.config)
 
+    def is_static_file(self, path):
+        if path == "stats.html":
+            return True
+
+        return MessageController.is_static_file(self, path)
+
+    def send_file(self, path):
+        if path == "stats.html":
+            return send_file(os.path.dirname(os.path.realpath(__file__)) + '/rpghelper_stat_texts.html')
+
+        return MessageController.send_file(self, path)
+
     @staticmethod
     def require_user_id(message_controller, params, key, response: CommandMessageResponse):
         message = response.get_orig_message()
@@ -731,7 +768,7 @@ def set_stats(response: CommandMessageResponse):
     response.add_response_message("{stat_name} {stat_points} verleiht dir folgende Eigenschaften:\n\n{stat_text}".format(
         stat_points=params["stat_points"],
         stat_name=params["stat_name"],
-        stat_text=CharacterStats.get_stat_text(curr_stat_id, int(params["stat_points"]))
+        stat_text=CharacterStats.get_stat_text(curr_stat_id, int(params["stat_points"]), reload_bs=True)
     ))
     response.set_suggestions(keyboards)
 
@@ -762,6 +799,48 @@ def stats(response: CommandMessageResponse):
     stats = CharacterStats(char_stats_db) if char_stats_db is not None else CharacterStats.init_empty(plain_user_id, char_id)
 
     response.add_response_message(stats.gen_stat_message("de"))
+    response.set_suggestions([message_controller.generate_text_user_char("Anzeigen", plain_user_id, char_id, response.get_orig_message())])
+    return response
+
+stats_info_command = MessageCommand([
+    MessageParam("user_id", MessageParam.CONST_REGEX_USER_ID, examples=MessageParam.random_user),
+    MessageParam("char_id", MessageParam.CONST_REGEX_NUM, examples=range(1,4)),
+], "Statuswerte-Informationen", "stats-info", ["Stats-informationen", "Statuswerte-info", "show-stats-info"])
+@ModuleMessageController.add_method(stats_info_command)
+def stats_info(response: CommandMessageResponse):
+    message_controller = response.get_message_controller()
+    params = response.get_params()
+
+    user_id, response = ModuleMessageController.require_user_id(message_controller, params, "user_id", response)
+    if user_id is None:
+        return response
+
+    plain_user_id = user_id[1:]
+
+    char_id, response = ModuleMessageController.require_char_id(message_controller, params, "char_id", plain_user_id, response)
+    if char_id is None:
+        return response
+
+    character_persistent_class = message_controller.character_persistent_class  # type: ModuleCharacterPersistentClass
+    char_stats_db = character_persistent_class.get_char_stats(plain_user_id, char_id)
+    stats = CharacterStats(char_stats_db) if char_stats_db is not None else CharacterStats.init_empty(plain_user_id, char_id)
+
+    message = ""
+
+    stat_names = CharacterStats.get_stat_names("de")
+    CharacterStats.bs = None
+    for stat_id, stat_name in stat_names.items():
+        stat_points = stats.get_stat_by_id(stat_id)
+        if message != "":
+            message += "\n\n----\n\n"
+        message += "{stat_name} {stat_points:2d}:\n\n{stat_text}".format(
+            stat_name=stat_name,
+            stat_points=stat_points,
+            stat_text=CharacterStats.get_stat_text(stat_id, stat_points, add_text=False)
+        )
+
+    response.add_response_messages(message_controller.split_messages(message, "----"))
+
     response.set_suggestions([message_controller.generate_text_user_char("Anzeigen", plain_user_id, char_id, response.get_orig_message())])
     return response
 

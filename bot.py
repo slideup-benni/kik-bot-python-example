@@ -40,7 +40,8 @@ from flask_babel import Babel, force_locale
 from flask_babel import gettext as _
 from kik import KikApi, Configuration
 from kik.messages import messages_from_json, TextMessage, SuggestedResponseKeyboard, Message, TextResponse
-from kik.code import Code
+from werkzeug.exceptions import BadRequest
+
 from modules.character_persistent_class import CharacterPersistentClass
 from modules.kik_user import LazyKikUser
 from modules.message_controller import MessageController
@@ -57,10 +58,15 @@ def picture(path):
     return send_from_directory(picture_path, path)
 
 
-@app.route("/static/<path:path>", methods=["GET"])
-def static_file(path):
-    static_file_path = "{home}/static".format(home=str(Path.home()))
-    return send_from_directory(static_file_path, path)
+@app.route("/module_static/<path:path>", methods=["GET"])
+def module_static_file(path):
+    if custom_module is not None and hasattr(custom_module, "ModuleMessageController"):
+        message_controller = custom_module.ModuleMessageController(bot_username, config_file)
+    else:
+        message_controller = MessageController(bot_username, config_file)
+    if message_controller.is_static_file(path):
+        return message_controller.send_file(path)
+    return BadRequest()
 
 
 @app.route("/incoming", methods=["POST"])
