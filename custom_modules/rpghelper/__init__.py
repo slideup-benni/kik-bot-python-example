@@ -6,6 +6,7 @@ import random
 import re
 import sqlite3
 import time
+import copy
 
 from flask import send_file
 from bs4 import BeautifulSoup, NavigableString, Tag
@@ -138,7 +139,7 @@ class CharacterStats:
         return all_names
 
     @staticmethod
-    def get_stat_text(stat_id, stat_points, add_text=True, reload_bs=False):
+    def get_stat_text(stat_id, stat_points, add_text=True, reload_bs=False, compare_with_point=None):
         if stat_points == 0:
             return None
 
@@ -146,16 +147,32 @@ class CharacterStats:
             CharacterStats.bs = BeautifulSoup(open(os.path.dirname(os.path.realpath(__file__)) + '/rpghelper_stat_texts.html', 'r'), "html.parser")
 
         base_results = CharacterStats.bs.find_all(attrs={'data-stat-name': CharacterStats.get_stat_names('en')[stat_id], 'data-stat-level': stat_points})
+        cmp_result = None
+        if compare_with_point is not None:
+            cmp_results = CharacterStats.bs.find_all(attrs={'data-stat-name': CharacterStats.get_stat_names('en')[stat_id], 'data-stat-level': compare_with_point})
+            if len(cmp_results) >= 1:
+                cmp_result = cmp_results[0]
+            else:
+                return None
 
         if len(base_results) < 1:
             return None
 
 
-        def filter_text(result):
+        def filter_text(result, compare_result=None):
+            result = copy.copy(result)  # type: Tag
             for tag in result.find_all('li'):
-                tag.insert(0, NavigableString("- "))
+                if compare_result is None:
+                    tag.insert(0, NavigableString("- "))
+                else:
+                    cmp_talent = compare_result.find(attrs={'data-talent': tag.attrs["data-talent"]})
+                    if cmp_talent is None or cmp_talent.getText() != tag.getText():
+                        btn = u"\U00002197\U0000FE0F" if compare_with_point < stat_points else u"\U00002198\U0000FE0F"
+                    else:
+                        btn = u"\U000027A1\U0000FE0F"
+                    tag.insert(0, NavigableString(btn + " "))
 
-            for tag in result.find_all('ul'): # type: Tag
+            for tag in result.find_all('ul'):
                 tag.append(NavigableString("\n"))
 
             for tag in result.find_all('h3'):
@@ -172,9 +189,9 @@ class CharacterStats:
         if add_text is True:
             add_results = CharacterStats.bs.find_all(attrs={'data-stat-name': CharacterStats.get_stat_names('en')[stat_id], 'data-stat-add-text': True})
             if len(add_results) >= 1 and add_results[0].getText() != '':
-                return filter_text(base_results[0]) + "\n\n" + filter_text(add_results[0])
+                return filter_text(base_results[0], cmp_result) + "\n\n" + filter_text(add_results[0])
 
-        return filter_text(base_results[0])
+        return filter_text(base_results[0], cmp_result)
 
     @staticmethod
     def stat_id_from_name(name, lang):
@@ -745,6 +762,11 @@ def set_stats(response: CommandMessageResponse):
                 stat_name=params["stat_name"],
                 max_stat_points=possible_points[len(possible_points) - 1]
             )
+            if curr_stat_points != 0 and curr_stat_points != 10:
+                body += "\n\n\nFür Stufe {next_stat_point} erwarten dich folgende Eigenschaften:\n\n{stat_text}".format(
+                    next_stat_point=curr_stat_points+1,
+                    stat_text=CharacterStats.get_stat_text(curr_stat_id, curr_stat_points+1, reload_bs=True, compare_with_point=curr_stat_points)
+                )
         else:
             body = "Du kannst keine Punkte auf {stat_name} verteilen.".format(
                 stat_name=params["stat_name"]
@@ -754,6 +776,8 @@ def set_stats(response: CommandMessageResponse):
         response.set_suggestions([command.get_example({**params, "stat_points": stat_point}) for stat_point in possible_points])
         return response
 
+    char_stats_db = character_persistent_class.get_char_stats(plain_user_id, char_id)
+    stats_before = CharacterStats(char_stats_db) if char_stats_db is not None else CharacterStats.init_empty(plain_user_id, char_id)
     stats = CharacterStats(character_persistent_class.set_char_stat(plain_user_id, curr_stat_id, params["stat_points"], char_id=char_id))
 
     keyboards = []
@@ -763,12 +787,21 @@ def set_stats(response: CommandMessageResponse):
     for stat_id, stat_name in stat_names.items():
         if stats.get_stat_by_id(stat_id) != 0 and stat_id != curr_stat_id:
             keyboards.append(command.get_example({**params, "stat_points": None, "stat_name": stat_name}))
+    keyboards.append("Stats-Info")
+    if stats_before.get_stat_by_id(curr_stat_id) != 0:
+        keyboards.append(command.get_example({**params, "stat_points": stats_before.get_stat_by_id(curr_stat_id), "stat_name": params["stat_name"]}))
+
 
     response.add_response_message(stats.gen_stat_message("de"))
     response.add_response_message("{stat_name} {stat_points} verleiht dir folgende Eigenschaften:\n\n{stat_text}".format(
         stat_points=params["stat_points"],
         stat_name=params["stat_name"],
-        stat_text=CharacterStats.get_stat_text(curr_stat_id, int(params["stat_points"]), reload_bs=True)
+        stat_text=CharacterStats.get_stat_text(
+            curr_stat_id,
+            int(params["stat_points"]),
+            reload_bs=True,
+            compare_with_point=None if stats_before.get_stat_by_id(curr_stat_id) == 0 else stats_before.get_stat_by_id(curr_stat_id)
+        )
     ))
     response.set_suggestions(keyboards)
 
