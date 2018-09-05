@@ -2,7 +2,7 @@ import json
 import time
 from random import randrange
 
-from kik import User as KikUser, KikApi, KikError
+from kik import KikApi, KikError
 
 
 class User:
@@ -86,7 +86,7 @@ class LazyKikUser(User):
 
     @staticmethod
     def init_new_user(user_id, bot_id=None):
-        return LazyKikUser({"user_id": user_id, "bot_id": bot_id})
+        return LazyKikUser({"user_id": user_id, "bot_id": bot_id, "is_admin": 0})
 
     def __init__(self, user_db):
         User.__init__(self, user_db)
