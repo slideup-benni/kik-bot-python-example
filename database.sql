@@ -27,18 +27,41 @@ CREATE TABLE users (
     deletor_id TEXT,
     deleted INTEGER
 );
-CREATE TABLE user_command_status (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id TEXT NOT NULL,
-    status TEXT NOT NULL,
-    updated INTEGER NOT NULL
-);
 CREATE TABLE static_messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     command TEXT NOT NULL,
     response TEXT NOT NULL,
     response_keyboards TEXT,
     alt_commands TEXT
+);
+
+CREATE TABLE users (
+	  id INTEGER primary key autoincrement,
+	  bot_id TEXT NOT NULL,
+	  user_id TEXT NOT NULL,
+	  first_name TEXT,
+	  last_name TEXT,
+	  is_user_id TEXT,
+	  is_char_id TEXT,
+	  status TEXT,
+	  authed_since INTEGER,
+	  authed_by TEXT,
+	  is_admin INTEGER default 0 NOT NULL,
+	  last_request INTEGER,
+	  created INTEGER NOT NULL
+);
+
+CREATE TABLE kik_user_response (
+	  id INTEGER primary key autoincrement,
+	  bot_id TEXT NOT NULL,
+	  user_id TEXT NOT NULL,
+	  first_name TEXT NOT NULL,
+	  last_name TEXT NOT NULL,
+	  profile_pic_url TEXT,
+	  profile_pic_last_modified TEXT,
+	  timezone TEXT,
+    plain_response TEXT NOT NULL,
+	  created INTEGER NOT NULL
 );
 
 INSERT INTO static_messages (command, response, response_keyboards, alt_commands) VALUES ('nur-vorlage', 'Basics:

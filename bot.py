@@ -91,8 +91,11 @@ def incoming():
         message_controller = MessageController(bot_username, config_file)
 
     for message in messages:
+        # noinspection PyBroadException
         try:
-            user = LazyKikUser.init(message.from_user) # type: LazyKikUser
+            LazyKikUser.character_persistent_class = message_controller.character_persistent_class
+            user_db = message_controller.character_persistent_class.get_user(message.from_user)
+            user = LazyKikUser.init(user_db) if user_db is not None else LazyKikUser.init_new_user(message.from_user, bot_username)
             with force_locale(message_controller.get_config().get("BaseLanguage", "en")):
                 response_messages += message_controller.process_message(message, user)
         except:
@@ -122,6 +125,7 @@ def incoming():
                 keyboards=[SuggestedResponseKeyboard(responses=resp_keyboard)]
             )]
 
+        # noinspection PyBroadException
         try:
             kik_api.send_messages(response_messages)
         except:
@@ -157,9 +161,9 @@ _paragraph_re = re.compile(r'(?:\r\n|\r|\n){2,}')
 @evalcontextfilter
 def nl2br(eval_ctx, value):
     result = u'\n\n'.join(u'<p>%s</p>' % p.replace('\n', '<br>\n') for p in _paragraph_re.split(escape(value)))
-    result = re.sub('(?P<url>http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+)', "<a href=\"\g<url>\">\g<url></a>", result)
-    result = re.sub('@(?P<user_id>[a-zA-Z0-9_\.]+)', "<a href=\"#\" class=\"user_link\" data-user-id=\"\g<user_id>\">@\g<user_id></a>", result)
-    result = re.sub('#(?P<group_id>[a-zA-Z_\.][a-zA-Z0-9_\.]+)', "<a href=\"#\" class=\"group_link\" data-group-id=\"\g<group_id>\">#\g<group_id></a>", result)
+    result = re.sub(r"(?P<url>http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+)", "<a href=\"\g<url>\">\g<url></a>", result)
+    result = re.sub(r"@(?P<user_id>[a-zA-Z0-9_\.]+)", "<a href=\"#\" class=\"user_link\" data-user-id=\"\g<user_id>\">@\g<user_id></a>", result)
+    result = re.sub(r"#(?P<group_id>[a-zA-Z_\.][a-zA-Z0-9_\.]+)", "<a href=\"#\" class=\"group_link\" data-group-id=\"\g<group_id>\">#\g<group_id></a>", result)
     if eval_ctx.autoescape:
         result = Markup(result)
     return result
@@ -297,7 +301,9 @@ def debug():
 
         if message is not None:
 
-            user = LazyKikUser.init("ismil1110") # type: LazyKikUser
+            LazyKikUser.character_persistent_class = message_controller.character_persistent_class
+            user_db = message_controller.character_persistent_class.get_user(message.from_user)
+            user = LazyKikUser.init(user_db) if user_db is not None else LazyKikUser.init_new_user(message.from_user, bot_username)
             lang = form.message_lang.data if form.message_lang.data != "default" else message_controller.get_config().get("BaseLanguage", "en")
             with force_locale(lang):
                 response_messages = message_controller.process_message(message, user)
@@ -352,9 +358,9 @@ if custom_module_name is not False and str(custom_module_name).lower() != "false
 
 # prepare database
 if custom_module is not None and hasattr(custom_module, "ModuleCharacterPersistentClass"):
-    db_class = custom_module.ModuleCharacterPersistentClass(default_config)
+    db_class = custom_module.ModuleCharacterPersistentClass(default_config, bot_username)
 else:
-    db_class = CharacterPersistentClass(default_config)
+    db_class = CharacterPersistentClass(default_config, bot_username)
 del db_class
 
 kik_api = KikApi(bot_username, default_config.get("BotAuthCode", "abcdef01-2345-6789-abcd-ef0123456789"))

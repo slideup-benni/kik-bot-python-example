@@ -413,7 +413,7 @@ class MessageController:
     def __init__(self, bot_username, config_file):
         self.config = self.read_config(config_file)
         self.bot_username = bot_username
-        self.character_persistent_class = CharacterPersistentClass(self.config)
+        self.character_persistent_class = CharacterPersistentClass(self.config, bot_username)
 
     @staticmethod
     def read_config(config_file):
@@ -483,23 +483,23 @@ class MessageController:
             # Dynamische Befehle
             #
             if message_body == u"\U00002B05\U0000FE0F":
-                status_obj = self.character_persistent_class.get_user_command_status(self.get_from_userid(message))
+                status_obj = user.get_status_obj()
                 if status_obj['status'] == CharacterPersistentClass.STATUS_DYN_MESSAGES and 'left' in status_obj['data']:
                     message_body = status_obj['data']['left'].lower()
                     message_body_c = status_obj['data']['left']
 
             elif message_body == u"\U000027A1\U0000FE0F":
-                status_obj = self.character_persistent_class.get_user_command_status(self.get_from_userid(message))
+                status_obj = user.get_status_obj()
                 if status_obj['status'] == CharacterPersistentClass.STATUS_DYN_MESSAGES and 'right' in status_obj['data']:
                     message_body = status_obj['data']['right'].lower()
                     message_body_c = status_obj['data']['right']
             elif message_body == u"\U0001F504":
-                status_obj = self.character_persistent_class.get_user_command_status(self.get_from_userid(message))
+                status_obj = user.get_status_obj()
                 if status_obj['status'] == CharacterPersistentClass.STATUS_DYN_MESSAGES and 'redo' in status_obj['data']:
                     message_body = status_obj['data']['redo'].lower()
                     message_body_c = status_obj['data']['redo']
             elif message_body.strip()[0] == "@":
-                status_obj = self.character_persistent_class.get_user_command_status(self.get_from_userid(message))
+                status_obj = user.get_status_obj()
                 if status_obj['status'] == CharacterPersistentClass.STATUS_DYN_MESSAGES and 'add_user_id' in status_obj['data']:
                     message_body = status_obj['data']['add_user_id'].lower().format(message_body.strip()[1:])
                     message_body_c = status_obj['data']['add_user_id'].format(message_body_c.strip()[1:])
@@ -518,7 +518,7 @@ class MessageController:
                     keyboards=[SuggestedResponseKeyboard(responses=[MessageController.generate_text_response("Hilfe")])]
                 ))
         elif isinstance(message, PictureMessage):
-            status_obj = self.character_persistent_class.get_user_command_status(self.get_from_userid(message))
+            status_obj = user.get_status_obj()
             if status_obj is None or status_obj['status'] != CharacterPersistentClass.STATUS_SET_PICTURE:
                 response_messages.append(TextMessage(
                     to=message.from_user,
@@ -564,7 +564,8 @@ class MessageController:
         # We're sending a batch of messages. We can send up to 25 messages at a time (with a limit of
         # 5 messages per user).
 
-        self.character_persistent_class.update_user_command_status(self.get_from_userid(message), user_command_status, user_command_status_data)
+        user.update_status(user_command_status, user_command_status_data)
+        self.character_persistent_class.update_user(user)
         self.character_persistent_class.commit()
         return response_messages
 
@@ -596,11 +597,12 @@ class MessageController:
         return TextResponse(" ".join(split))
 
     @staticmethod
-    def check_auth(persistent_class, message, config, auth_command=False):
+    def check_auth(user: User, message, config, auth_command=False):
         if auth_command is False and message.chat_id == config.get("KikGroupChatId", ""):
             return True
 
-        if persistent_class.is_auth_user(message) is False:
+
+        if user.is_authed() is False and MessageController.is_admin(message, config) is False:
             return TextMessage(
                 to=message.from_user,
                 chat_id=message.chat_id,
@@ -610,8 +612,7 @@ class MessageController:
             )
         return True
 
-    @staticmethod
-    def create_char_messages(character_persistent_class, char_data: sqlite3.Row, message, user_command_status, user_command_status_data, user: User):
+    def create_char_messages(self, char_data: sqlite3.Row, message, user_command_status, user_command_status_data, user: User):
         response_messages = []
         keyboard_responses = []
         body_char_appendix = ""
@@ -638,7 +639,7 @@ class MessageController:
 
         keyboard_responses.append(MessageController.generate_text_response("Liste"))
 
-        pic_url = character_persistent_class.get_char_pic_url(char_data["user_id"], char_data["char_id"])
+        pic_url = self.character_persistent_class.get_char_pic_url(char_data["user_id"], char_data["char_id"])
 
         if pic_url is False:
             body_char_appendix += _("\n\nCharakter-Bilder müssen vor dem Anzeigen bestätigt werden.")
@@ -653,8 +654,8 @@ class MessageController:
             char_text=str(char_data["text"]).format(
                 user=user
             ),
-            from_user=MessageController.get_name(char_data["user_id"], append_user_id=True),
-            creator_user=MessageController.get_name(char_data['creator_id'], append_user_id=True),
+            from_user=self.get_name(char_data["user_id"], append_user_id=True),
+            creator_user=self.get_name(char_data['creator_id'], append_user_id=True),
             created=datetime.datetime.fromtimestamp(char_data['created']),
             appendix=body_char_appendix,
         )
@@ -699,9 +700,9 @@ class MessageController:
             splitted_messages.append(new_body)
         return splitted_messages
 
-    @staticmethod
-    def get_name(user_id, append_user_id=False):
-        user = LazyKikUser.init(user_id)
+    def get_name(self, user_id, append_user_id=False):
+        user_db = self.character_persistent_class.get_user(user_id)
+        user = LazyKikUser.init(user_db) if user_db is not None else LazyKikUser.init_new_user(user_id, self.bot_username)
         if append_user_id is True:
             return user["name_and_id"]
         else:
@@ -816,7 +817,7 @@ def msg_cmd_add(self, message, message_body, message_body_c, response_messages, 
     if len(message_body.split(None, 2)) == 3 and message_body.split(None, 2)[1][0] == "@" and message_body.split(None, 2)[2].strip() != "":
         selected_user = message_body.split(None, 2)[1][1:]
 
-        auth = self.check_auth(self.character_persistent_class, message, self.config)
+        auth = self.check_auth(user, message, self.config)
         if selected_user != self.get_from_userid(message) and auth is not True:
             return [auth], user_command_status, user_command_status_data
 
@@ -893,7 +894,7 @@ def msg_cmd_change(self, message, message_body, message_body_c, response_message
         char_id = int(message_body.split(None, 3)[2])
         text = message_body_c.split(None, 3)[3].strip()
 
-        auth = self.check_auth(self.character_persistent_class, message, self.config)
+        auth = self.check_auth(user, message, self.config)
         if user_id != self.get_from_userid(message) and auth is not True:
             return [auth], user_command_status, user_command_status_data
 
@@ -929,7 +930,7 @@ def msg_cmd_change(self, message, message_body, message_body_c, response_message
     elif len(message_body.split(None, 2)) == 3 and message_body.split(None, 2)[1][0] == "@" and message_body.split(None, 2)[2].strip() != "":
         user_id = message_body.split(None, 2)[1][1:].strip()
 
-        auth = self.check_auth(self.character_persistent_class, message, self.config)
+        auth = self.check_auth(user, message, self.config)
         if user_id != self.get_from_userid(message) and auth is not True:
             return [auth], user_command_status, user_command_status_data
 
@@ -976,7 +977,7 @@ def msg_cmd_set_pic(self, message, message_body, message_body_c, response_messag
         user_id = message_body.split(None, 2)[1][1:].strip()
         char_id = int(message_body.split(None, 2)[2])
 
-        auth = self.check_auth(self.character_persistent_class, message, self.config)
+        auth = self.check_auth(user, message, self.config)
         if user_id != self.get_from_userid(message) and auth is not True:
             return [auth], user_command_status, user_command_status_data
 
@@ -989,7 +990,7 @@ def msg_cmd_set_pic(self, message, message_body, message_body_c, response_messag
         user_id = message_body.split(None, 1)[1][1:].strip()
         char_id = None
 
-        auth = self.check_auth(self.character_persistent_class, message, self.config)
+        auth = self.check_auth(user, message, self.config)
         if user_id != self.get_from_userid(message) and auth is not True:
             return [auth], user_command_status, user_command_status_data
 
@@ -1094,8 +1095,7 @@ def msg_cmd_show(self, message, message_body, message_body_c, response_messages,
             keyboards=[SuggestedResponseKeyboard(responses=[MessageController.generate_text_response("Liste")])]
         ))
     else:
-        (char_resp_msg, user_command_status, user_command_status_data) = self.create_char_messages(self.character_persistent_class,
-                                                                                                   char_data, message, user_command_status, user_command_status_data, user)
+        (char_resp_msg, user_command_status, user_command_status_data) = self.create_char_messages(char_data, message, user_command_status, user_command_status_data, user)
         response_messages += char_resp_msg
     return response_messages, user_command_status, user_command_status_data
 
@@ -1308,7 +1308,7 @@ def msg_cmd_search(self, message, message_body, message_body_c, response_message
     if len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1].strip() != "":
         query = message_body.split(None, 1)[1].strip()
 
-        auth = self.check_auth(self.character_persistent_class, message, self.config)
+        auth = self.check_auth(user, message, self.config)
         if auth is not True:
             return [auth], user_command_status, user_command_status_data
 
@@ -1323,8 +1323,7 @@ def msg_cmd_search(self, message, message_body, message_body_c, response_message
             ))
 
         elif len(chars) == 1:
-            (char_resp_msg, user_command_status, user_command_status_data) = self.create_char_messages(self.character_persistent_class,
-                                                                                                       chars[0], message, user_command_status, user_command_status_data, user)
+            (char_resp_msg, user_command_status, user_command_status_data) = self.create_char_messages(chars[0], message, user_command_status, user_command_status_data, user)
             response_messages += char_resp_msg
 
         else:
@@ -1513,24 +1512,20 @@ def msg_cmd_set_command(self, message, message_body, message_body_c, response_me
 def msg_cmd_auth(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User):
     if len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1][0] == "@":
         selected_user = message_body.split(None, 1)[1][1:].strip()
-        result = self.character_persistent_class.auth_user(selected_user, message)
+        auth = self.check_auth(user, message, self.config)
+        if auth is not True:
+            return [auth], user_command_status, user_command_status_data
 
-        if result is True:
-            response_messages.append(TextMessage(
-                to=message.from_user,
-                chat_id=message.chat_id,
-                body=_("Du hast erfolgreich den Nutzer @{user_id} berechtigt.").format(user_id=selected_user)
-            ))
+        to_auth_user_db = self.character_persistent_class.get_user(selected_user)
+        to_auth_user = User.init(to_auth_user_db) if to_auth_user_db is not None else User.init_new_user(selected_user, self.bot_username)
+        to_auth_user.auth(user)
+        self.character_persistent_class.update_user(to_auth_user, as_request=False)
 
-        else:
-            response_messages.append(TextMessage(
-                to=message.from_user,
-                chat_id=message.chat_id,
-                body=_("Der Nutzer @{user_id} konnte nicht berechtigt werden.\n\n" +
-                       "Dies kann folgende Ursachen haben:\n" +
-                       "1. Der Nutzer ist bereits berechtigt.\n" +
-                       "2. Du bist nicht berechtigt, diesen Nutzer zu berechtigen.").format(user_id=selected_user)
-            ))
+        response_messages.append(TextMessage(
+            to=message.from_user,
+            chat_id=message.chat_id,
+            body=_("Du hast erfolgreich den Nutzer @{user_id} berechtigt.").format(user_id=selected_user)
+        ))
 
     else:
         response_messages.append(MessageController.get_error_response(message))
@@ -1544,23 +1539,26 @@ def msg_cmd_auth(self, message, message_body, message_body_c, response_messages,
 def msg_cmd_unauth(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User):
     if len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1][0] == "@":
         selected_user = message_body.split(None, 1)[1][1:].strip()
-        result = self.character_persistent_class.unauth_user(selected_user, self.get_from_userid(message))
 
-        if result is True:
+        if MessageController.is_admin(message, self.config) is False:
             response_messages.append(TextMessage(
                 to=message.from_user,
                 chat_id=message.chat_id,
-                body=_("Du hast erfolgreich den Nutzer @{user_id} entmächtigt.").format(user_id=selected_user)
+                body=_("Du bist nicht berechtigt diesen Befehl auszuführen!\nNur Admins können Nutzern Rechte entziehen.")
             ))
+            return response_messages, user_command_status, user_command_status_data
 
-        else:
-            response_messages.append(TextMessage(
-                to=message.from_user,
-                chat_id=message.chat_id,
-                body=_("Der Nutzer @{user_id} konnte nicht entmächtigt werden.\n\n" +
-                       "Dies kann folgende Ursachen haben:\n" +
-                       "Du bist nicht berechtigt, diesen Nutzer zu entmächtigen.").format(user_id=selected_user)
-            ))
+
+        to_auth_user_db = self.character_persistent_class.get_user(selected_user)
+        to_auth_user = User.init(to_auth_user_db) if to_auth_user_db is not None else User.init_new_user(selected_user, self.bot_username)
+        to_auth_user.unauth()
+        self.character_persistent_class.update_user(to_auth_user, as_request=False)
+
+        response_messages.append(TextMessage(
+            to=message.from_user,
+            chat_id=message.chat_id,
+            body=_("Du hast erfolgreich den Nutzer @{user_id} entmächtigt.").format(user_id=selected_user)
+        ))
 
     else:
         response_messages.append(MessageController.get_error_response(message))
@@ -1577,7 +1575,7 @@ def msg_cmd_list(self, message, message_body, message_body_c, response_messages,
     else:
         page = 1
 
-    auth = self.check_auth(self.character_persistent_class, message, self.config)
+    auth = self.check_auth(user, message, self.config)
     if auth is not True:
         return [auth], user_command_status, user_command_status_data
 
@@ -1913,7 +1911,7 @@ def msg_cmd_other(self, message: TextMessage, message_body, message_body_c, resp
             kik_group_id=self.config.get("KikGroup", "somegroup"),
             user_id=self.get_from_userid(message),
             message=message,
-            ruser=LazyRandomKikUser(message.participants, message.from_user, self.config.get("Admins", "admin1").split(',')[0].strip()),
+            ruser=LazyRandomKikUser(message.participants, user, self.config.get("Admins", "admin1").split(',')[0].strip(), self.character_persistent_class),
             args=[x.strip() for x in message_body_c.split()[1:]]
         ))
 

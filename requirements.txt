@@ -1,3 +1,5 @@
+werkzeug
+jinja2
 wtforms
 requests
 flake8==2.5.4

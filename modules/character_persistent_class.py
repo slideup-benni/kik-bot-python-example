@@ -8,6 +8,8 @@ from pathlib import Path
 
 import requests
 
+from modules.kik_user import User
+
 
 class CharacterPersistentClass:
 
@@ -15,10 +17,11 @@ class CharacterPersistentClass:
     STATUS_SET_PICTURE = 1
     STATUS_DYN_MESSAGES = 2
 
-    def __init__(self, config):
+    def __init__(self, config, bot_username):
         self.connection = None
         self.cursor = None  # type: sqlite3.Cursor
         self.config = config
+        self.bot_username = bot_username
         self.database_path = CharacterPersistentClass.get_database_path_from_config(config)
 
         if not os.path.exists(self.database_path):
@@ -295,62 +298,6 @@ class CharacterPersistentClass:
         ), [(page-1)*limit, limit+1])
         return self.cursor.fetchall()
 
-    def auth_user(self, user_id, message):
-        from modules.message_controller import MessageController
-        if self.is_auth_user(message) or \
-                MessageController.is_admin(message, self.config) is False and (self.is_unauth_user(user_id) or self.is_auth_user(message) is False):
-            return False
-
-        self.connect_database()
-
-        data = (user_id, MessageController.get_from_userid(message), int(time.time()))
-        self.cursor.execute((
-            "INSERT INTO users "
-            "(user_id, creator_id, created) "
-            "VALUES (?, ?, ?)"
-        ), data)
-        return True
-
-    def unauth_user(self, user_id, message):
-        from modules.message_controller import MessageController
-        if MessageController.is_admin(message, self.config) is False:
-            return False
-
-        self.connect_database()
-
-        data = (MessageController.get_from_userid(message), int(time.time()), user_id)
-        self.cursor.execute((
-            "UPDATE users "
-            "SET deletor_id=?, deleted=? "
-            "WHERE user_id LIKE ?"
-        ), data)
-        return True
-
-    def is_auth_user(self, message):
-        from modules.message_controller import MessageController
-        if MessageController.is_admin(message, self.config):
-            return True
-
-        self.connect_database()
-        self.cursor.execute((
-            "SELECT id "
-            "FROM  users "
-            "WHERE user_id LIKE ? AND deleted IS NULL "
-            "LIMIT 1"
-        ), [MessageController.get_from_userid(message)])
-        return self.cursor.fetchone() is not None
-
-    def is_unauth_user(self, user_id):
-        self.connect_database()
-
-        self.cursor.execute((
-            "SELECT id "
-            "FROM  users "
-            "WHERE user_id LIKE ? AND deleted IS NULL "
-            "LIMIT 1"
-        ), [user_id])
-        return self.cursor.fetchone() is None
-
     def find_char(self, name, user_id):
         self.connect_database()
 
@@ -387,49 +334,86 @@ class CharacterPersistentClass:
 
         return chars
 
-    def update_user_command_status(self, user_id, status, status_data=None):
+    def update_user(self, user: User, as_request=True):
         self.connect_database()
 
-        status_obj = {
-            'status': status,
-            'data': status_data
-        }
+        if user.get_db_id() is None:
+            self.cursor.execute((
+                "INSERT INTO users "
+                "(user_id, bot_id, first_name, last_name, is_user_id, is_char_id, status, authed_since, authed_by, is_admin, last_request, created) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            ), [user["user_id"],
+                self.bot_username,
+                user["first_name"],
+                user["last_name"],
+                user["is_user_id"],
+                user["is_char_id"],
+                user["status"],
+                user["authed_since"],
+                user["authed_by"],
+                user["is_admin"],
+                int(time.time()) if as_request is True else user["last_request"],
+                int(time.time())])
+        else:
+            self.cursor.execute((
+                "UPDATE users "
+                "SET first_name = ?, "
+                "    last_name = ?, "
+                "    is_user_id = ?, "
+                "    is_char_id = ?, "
+                "    status = ?, "
+                "    authed_since = ?, "
+                "    authed_by = ?, "
+                "    is_admin = ?, "
+                "    last_request = ? "
+                "WHERE user_id LIKE ? AND bot_id LIKE ?"
+            ), [user["first_name"], user["last_name"], user["is_user_id"], user["is_char_id"], user["status"], user["authed_since"], user["authed_by"],
+                user["is_admin"], int(time.time()) if as_request is True else user["last_request"], user["user_id"], self.bot_username])
+
+
+
+    def get_user(self, user_id):
+        self.connect_database()
 
         self.cursor.execute((
-            "SELECT user_id, status "
-            "FROM user_command_status "
+            "SELECT * "
+            "FROM users "
+            "WHERE user_id LIKE ? AND "
+            "    bot_id LIKE ? "
+            "LIMIT 1"
+        ), [user_id, self.bot_username])
+
+        return self.cursor.fetchone()
+
+    def get_kik_user(self, user_id):
+        self.connect_database()
+
+        self.cursor.execute((
+            "SELECT * "
+            "FROM kik_user_response "
             "WHERE user_id LIKE ? "
+            "ORDER BY created DESC "
             "LIMIT 1"
         ), [user_id])
 
-        if self.cursor.fetchone() is None:
-            self.cursor.execute((
-                "INSERT INTO user_command_status "
-                "(user_id, status, updated) "
-                "VALUES (?, ?, ?) "
-            ), [user_id, json.dumps(status_obj), int(time.time())])
-        else:
-            self.cursor.execute((
-                "UPDATE user_command_status "
-                "SET status = ?, updated = ? "
-                "WHERE user_id LIKE ? "
-            ), [json.dumps(status_obj), int(time.time()), user_id])
+        return self.cursor.fetchone()
 
-    def get_user_command_status(self, user_id):
+    def add_kik_user_data(self, user_id, kik_user):
+        """
+
+        :type user_id: str
+        :type kik_user: kik.User
+        """
         self.connect_database()
 
         self.cursor.execute((
-            "SELECT status "
-            "FROM user_command_status "
-            "WHERE user_id LIKE ? "
-            "LIMIT 1"
-        ), [user_id])
+            "INSERT INTO kik_user_response "
+            "(bot_id, user_id, first_name, last_name, profile_pic_url, profile_pic_last_modified, timezone, plain_response, created) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+        ), [self.bot_username, user_id, kik_user.first_name, kik_user.last_name, kik_user.profile_pic_url, kik_user.profile_pic_last_modified, kik_user.timezone,
+            json.dumps(kik_user.to_json()), int(time.time())])
 
-        status_data = self.cursor.fetchone()
-        if status_data is None:
-            return None
-        else:
-            return json.loads(status_data['status'])
+        return self.get_kik_user(user_id)
 
     def set_static_message(self, command, response):
         self.connect_database()

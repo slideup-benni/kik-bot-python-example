@@ -520,7 +520,7 @@ class ModuleMessageController(MessageController):
 
     def __init__(self, bot_username, config_file):
         MessageController.__init__(self, bot_username, config_file)
-        self.character_persistent_class = ModuleCharacterPersistentClass(self.config)
+        self.character_persistent_class = ModuleCharacterPersistentClass(self.config, bot_username)
 
     def is_static_file(self, path):
         if path == "stats.html":
