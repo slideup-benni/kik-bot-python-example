@@ -78,7 +78,7 @@ class MessageParam:
 
     @staticmethod
     def init_char_id(name="char_id", required=False, validate_in_message=False, examples=None):
-        return MessageParam(name, MessageParam.CONST_REGEX_USER_ID, required=required, validate_in_message=validate_in_message,
+        return MessageParam(name, MessageParam.CONST_REGEX_NUM, required=required, validate_in_message=validate_in_message,
                             examples=range(1, 4) if examples is None else examples)
 
     @staticmethod
@@ -808,6 +808,85 @@ class MessageController:
             keyboards=[SuggestedResponseKeyboard(responses=[MessageController.generate_text_response(command)])]
         )
 
+    def require_user_id(self, params, key, response: CommandMessageResponse, use_linked_char=True):
+        message = response.get_orig_message()
+        command = response.get_command()
+        user = response.get_user()
+
+        if params[key] is None and use_linked_char is True and user.is_user_id is not None:
+            return "@"+user.is_user_id, response
+
+        if params[key] is None and MessageController.is_aliased(message):
+            response.add_response_message(_("Leider konnte ich deinen Nutzer nicht zuordnen. Bitte führe den Befehl erneut mit deiner Nutzer-Id aus:"))
+            response.add_response_message("@{bot_username} {command}".format(
+                bot_username=self.bot_username,
+                command=command.get_example({**params, key: _("@Deine_User_Id")})
+            ))
+            if use_linked_char is True:
+                response.add_response_message(_("Wenn du zukünfig alle Befehle mit deinem Charakter verknüpfen möchtest, kannst du dir deinen Standard-Charakter setzen:"))
+                response.add_response_message("@{bot_username} {command}".format(
+                    bot_username=self.bot_username,
+                    command=MessageController.get_command("Ich-Bin").get_example({"command": None, "user_id": _("@Deine_User_Id"), "char_id": _("@Deine_Char_Id")})
+                ))
+            return None, response
+
+        user_id = params[key]
+        if params[key] is None:
+            user_id = "@" + message.from_user
+
+        return user_id, response
+
+    def require_char_id(self, params, key, user_id, response: CommandMessageResponse, use_linked_char=True):
+        command = response.get_command()
+        chars = self.character_persistent_class.get_all_user_chars(user_id)
+        user = response.get_user()
+        linked_char_id = None
+        if params[key] is None and use_linked_char is True and user.is_user_id == user_id:
+            linked_char_id = user.is_char_id
+
+        if linked_char_id is None and len(chars) == 0:
+            response.add_response_message(_("Der Nutzer @{user_id} hat derzeit noch keine Charaktere angelegt. Siehe 'Vorlage' um einen Charakter zu erstellen.").format(
+                user_id=user_id
+            ))
+            response.set_suggestions(["Vorlage @{}".format(user_id)])
+            return None, response
+
+        if linked_char_id is None and len(chars) > 1 and params[key] is None:
+
+            chars_txt = ""
+            for char in chars:
+                if chars_txt != "":
+                    chars_txt += "\n---\n\n"
+                char_names = "\n".join(re.findall(r".*?name.*?:.*?\S+?.*", char["text"]))
+                if char_names == "":
+                    char_names = _("Im Steckbrief wurden keine Namen gefunden")
+                chars_txt += _("*Charakter {char_id}*\n{char_names}").format(
+                    char_id=char["char_id"],
+                    char_names=char_names
+                )
+
+            big_body = _("Für den Nutzer sind mehrere Charaktere vorhanden. Bitte wähle einen aus:\n\n") + chars_txt
+            for body in MessageController.split_messages(big_body, "---"):
+                response.add_response_message(body)
+                response.set_suggestions([command.get_example({**params, "char_id": char["char_id"]}) for char in chars][:12])
+
+            return None, response
+
+        char_id = params[key] if linked_char_id is None else linked_char_id
+        if len(chars) == 1 and params[key] is None:
+            char_id = chars[0]["char_id"]
+
+        found = False
+        for char in chars:
+            if int(char["char_id"]) == int(char_id):
+                found = True
+                break
+
+        if found is False:
+            response.add_response_message(_("Der Charakter mit der Id {} konnte nicht gefunden werden.").format(char_id))
+            response.set_suggestions([command.get_example({**params, "char_id": char["char_id"]}) for char in chars][:12])
+            return None, response
+        return int(char_id), response
 
 #
 # Befehl hinzufügen
@@ -1563,6 +1642,59 @@ def msg_cmd_unauth(self, message, message_body, message_body_c, response_message
     else:
         response_messages.append(MessageController.get_error_response(message))
     return response_messages, user_command_status, user_command_status_data
+
+#
+# Befehl i-am
+#
+iam_command = MessageCommand([
+    MessageParam.init_user_id(),
+    MessageParam.init_char_id(),
+], "Ich-Bin", "i-am", ["iam"])
+@MessageController.add_method(iam_command)
+def quest_accept(response: CommandMessageResponse):
+    message_controller = response.get_message_controller()  # type: MessageController
+    params = response.get_params()
+    user = response.get_user() # type: User
+
+    user_id, response = message_controller.require_user_id(params, "user_id", response)
+    if user_id is None:
+        return response
+
+    plain_user_id = user_id[1:]
+
+    char_id, response = message_controller.require_char_id(params, "char_id", plain_user_id, response)
+    if char_id is None:
+        return response
+
+    user.set_linked_chars(plain_user_id, char_id)
+
+    response.add_response_message(_("Alles klar! "
+                                    "Alle charakter-spezifischen Befehle sind ab jetzt für dich standardmäßig auf @{user_id} mit der Charakter-Id {char_id} gesetzt.").format(
+        user_id=plain_user_id,
+        char_id=char_id
+    ))
+    response.set_suggestions(["Anzeigen", "Wer-bin-ich"])
+    return response
+
+#
+# Befehl Wer bin ich
+#
+iam_command = MessageCommand([
+], "Wer-bin-ich", "who-am-i", ["wer-bin-ich?", "whoami", "who-am-i?"])
+@MessageController.add_method(iam_command)
+def quest_accept(response: CommandMessageResponse):
+    user = response.get_user() # type: User
+
+    if user["is_user_id"] is None:
+        response.add_response_message(_("Du hast derzeit keinen Benutzernamen und Charakter-Id für charakter-spezifischen Befehle gesetzt."))
+        return response
+
+    response.add_response_message(_("Alle charakter-spezifischen Befehle sind für standardmäßig auf @{user_id} mit der Charakter-Id {char_id} gesetzt.").format(
+        user_id=user["is_user_id"],
+        char_id=user["is_char_id"]
+    ))
+    response.set_suggestions(["Anzeigen"])
+    return response
 
 
 #

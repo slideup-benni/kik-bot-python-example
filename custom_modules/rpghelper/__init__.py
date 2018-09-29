@@ -534,74 +534,6 @@ class ModuleMessageController(MessageController):
 
         return MessageController.send_file(self, path)
 
-    @staticmethod
-    def require_user_id(message_controller, params, key, response: CommandMessageResponse):
-        message = response.get_orig_message()
-        command = response.get_command()
-
-        if params[key] is None and ModuleMessageController.is_aliased(message):
-            response.add_response_message("Leider konnte ich deinen Nutzer nicht zuordnen. Bitte führe den Befehl erneut mit deiner Nutzer-Id aus:")
-            response.add_response_message("@{bot_username} {command}".format(
-                bot_username=message_controller.bot_username,
-                command=command.get_example({**params, key: "@Deine_User_Id"})
-            ))
-            return None, response
-
-        user_id = params[key]
-        if params[key] is None:
-            user_id = "@" + message.from_user
-
-        return user_id, response
-
-    @staticmethod
-    def require_char_id(message_controller, params, key, user_id, response: CommandMessageResponse):
-        command = response.get_command()
-        chars = message_controller.character_persistent_class.get_all_user_chars(user_id)
-
-        if len(chars) == 0:
-            response.add_response_message("Der Nutzer @{user_id} hat derzeit noch keine Charaktere angelegt. Siehe 'Vorlage' um einen Charakter zu erstellen.".format(
-                user_id=user_id
-            ))
-            response.set_suggestions(["Vorlage @{}".format(user_id)])
-            return None, response
-
-        if len(chars) > 1 and params[key] is None:
-
-            chars_txt = ""
-            for char in chars:
-                if chars_txt != "":
-                    chars_txt += "\n---\n\n"
-                char_names = "\n".join(re.findall(r".*?name.*?:.*?\S+?.*", char["text"]))
-                if char_names == "":
-                    char_names = "Im Steckbrief wurden keine Namen gefunden"
-                chars_txt += "*Charakter {char_id}*\n{char_names}".format(
-                    char_id=char["char_id"],
-                    char_names=char_names
-                )
-
-            big_body = "Für den Nutzer sind mehrere Charaktere vorhanden. Bitte wähle einen aus:\n\n" + chars_txt
-            for body in ModuleMessageController.split_messages(big_body, "---"):
-                response.add_response_message(body)
-                response.set_suggestions([command.get_example({**params, "char_id": char["char_id"]}) for char in chars][:12])
-
-            return None, response
-
-        char_id = params[key]
-        if len(chars) == 1 and params[key] is None:
-            char_id = chars[0]["char_id"]
-
-        found = False
-        for char in chars:
-            if int(char["char_id"]) == int(char_id):
-                found = True
-                break
-
-        if found is False:
-            response.add_response_message("Der Charakter mit der Id {} konnte nicht gefunden werden.".format(char_id))
-            response.set_suggestions([command.get_example({**params, "char_id": char["char_id"]}) for char in chars][:12])
-            return None, response
-        return int(char_id), response
-
     def get_my_quest_part(self, parts, user_id, char_id):
 
         if len(parts) == 1:
@@ -758,13 +690,13 @@ def set_stats(response: CommandMessageResponse):
     params = response.get_params()
     command = response.get_command()
 
-    user_id, response = ModuleMessageController.require_user_id(message_controller, params, "user_id", response)
+    user_id, response = message_controller.require_user_id(params, "user_id", response)
     if user_id is None:
         return response
 
     plain_user_id = user_id[1:]
 
-    char_id, response = ModuleMessageController.require_char_id(message_controller, params, "char_id", plain_user_id, response)
+    char_id, response = message_controller.require_char_id(params, "char_id", plain_user_id, response)
     if char_id is None:
         return response
 
@@ -820,7 +752,7 @@ def set_stats(response: CommandMessageResponse):
     for stat_id, stat_name in stat_names.items():
         if stats.get_stat_by_id(stat_id) != 0 and stat_id != curr_stat_id:
             keyboards.append(command.get_example({**params, "stat_points": None, "stat_name": stat_name}))
-    keyboards.append("Stats-Info")
+    keyboards.append(MessageController.get_command("Stats-Info").get_example({**params, "command": None}))
     if stats_before.get_stat_by_id(curr_stat_id) != 0:
         keyboards.append(command.get_example({**params, "stat_points": stats_before.get_stat_by_id(curr_stat_id), "stat_name": params["stat_name"]}))
 
@@ -850,13 +782,13 @@ def stats(response: CommandMessageResponse):
     message_controller = response.get_message_controller()
     params = response.get_params()
 
-    user_id, response = ModuleMessageController.require_user_id(message_controller, params, "user_id", response)
+    user_id, response = message_controller.require_user_id(params, "user_id", response)
     if user_id is None:
         return response
 
     plain_user_id = user_id[1:]
 
-    char_id, response = ModuleMessageController.require_char_id(message_controller, params, "char_id", plain_user_id, response)
+    char_id, response = message_controller.require_char_id(params, "char_id", plain_user_id, response)
     if char_id is None:
         return response
 
@@ -877,13 +809,13 @@ def stats_info(response: CommandMessageResponse):
     message_controller = response.get_message_controller()
     params = response.get_params()
 
-    user_id, response = ModuleMessageController.require_user_id(message_controller, params, "user_id", response)
+    user_id, response = message_controller.require_user_id(params, "user_id", response)
     if user_id is None:
         return response
 
     plain_user_id = user_id[1:]
 
-    char_id, response = ModuleMessageController.require_char_id(message_controller, params, "char_id", plain_user_id, response)
+    char_id, response = message_controller.require_char_id(params, "char_id", plain_user_id, response)
     if char_id is None:
         return response
 
@@ -1011,13 +943,13 @@ def quest_accept(response: CommandMessageResponse):
 
     MAX_QUESTS = 1
 
-    user_id, response = ModuleMessageController.require_user_id(message_controller, params, "user_id", response)
+    user_id, response = message_controller.require_user_id(params, "user_id", response)
     if user_id is None:
         return response
 
     plain_user_id = user_id[1:]
 
-    char_id, response = ModuleMessageController.require_char_id(message_controller, params, "char_id", plain_user_id, response)
+    char_id, response = message_controller.require_char_id(params, "char_id", plain_user_id, response)
     if char_id is None:
         return response
 
@@ -1070,13 +1002,13 @@ def quest_task(response: CommandMessageResponse):
     character_persistent_class = message_controller.character_persistent_class  # type: ModuleCharacterPersistentClass
     params = response.get_params()
 
-    user_id, response = ModuleMessageController.require_user_id(message_controller, params, "user_id", response)
+    user_id, response = message_controller.require_user_id(params, "user_id", response)
     if user_id is None:
         return response
 
     plain_user_id = user_id[1:]
 
-    char_id, response = ModuleMessageController.require_char_id(message_controller, params, "char_id", plain_user_id, response)
+    char_id, response = message_controller.require_char_id(params, "char_id", plain_user_id, response)
     if char_id is None:
         return response
 
@@ -1128,13 +1060,13 @@ def quest_status(response: CommandMessageResponse):
     character_persistent_class = message_controller.character_persistent_class  # type: ModuleCharacterPersistentClass
     params = response.get_params()
 
-    user_id, response = ModuleMessageController.require_user_id(message_controller, params, "user_id", response)
+    user_id, response = message_controller.require_user_id(params, "user_id", response)
     if user_id is None:
         return response
 
     plain_user_id = user_id[1:]
 
-    char_id, response = ModuleMessageController.require_char_id(message_controller, params, "char_id", plain_user_id, response)
+    char_id, response = message_controller.require_char_id(params, "char_id", plain_user_id, response)
     if char_id is None:
         return response
 
