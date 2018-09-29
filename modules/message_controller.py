@@ -1929,7 +1929,7 @@ def msg_cmd_roll(self, message: TextMessage, message_body, message_body_c, respo
 
                 if int(match.group(3)) <= 20:
                     loops = int(match.group(3))
-                    while loops >= 0:
+                    while loops > 0:
                         res = random.randint(1, int(match.group(5)))
                         result_int += res
                         if res_text != "":
@@ -1939,7 +1939,7 @@ def msg_cmd_roll(self, message: TextMessage, message_body, message_body_c, respo
                 else:
                     dice_results = [0] * int(match.group(3))
                     loops = int(match.group(3))
-                    while loops >= 0:
+                    while loops > 0:
                         res = random.randint(1, int(match.group(5)))
                         result_int += res
                         dice_results[res-1] += 1
