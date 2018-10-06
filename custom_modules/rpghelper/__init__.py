@@ -471,6 +471,41 @@ class ModuleCharacterPersistentClass(CharacterPersistentClass):
 
         return self.cursor.fetchall()
 
+    def receive_money(self, user_id, char_id, money, money_type=None, description=None):
+        self.connect_database()
+
+        self.cursor.execute((
+            "INSERT INTO character_money_transactions "
+            "(user_id, char_id, money, type, description, created) "
+            "VALUES (?, ?, ?, ? , ?, ?) "
+        ), [
+            user_id,
+            int(char_id),
+            money,
+            money_type,
+            description,
+            int(time.time())
+        ])
+
+    def send_money(self, user_id, char_id, money, money_type=None, description=None):
+        return self.receive_money(user_id, char_id, money*-1, money_type, description)
+
+    def get_balance(self, user_id, char_id):
+        self.connect_database()
+
+        self.cursor.execute((
+            "SELECT SUM(money) AS balance "
+            "FROM character_money_transactions "
+            "WHERE user_id = ? "
+            "    AND char_id = ? "
+            "    AND deleted IS NULL"
+        ), [user_id, int(char_id)])
+
+        row = self.cursor.fetchone()
+        if row is None or row["balance"] is None:
+            return 0
+        return row["balance"]
+
     def move_char(self, from_user_id, to_user_id, from_char_id=None):
         self.connect_database()
 
@@ -492,6 +527,12 @@ class ModuleCharacterPersistentClass(CharacterPersistentClass):
             "WHERE user_id LIKE ? AND char_id=?"
         ), data)
 
+        self.cursor.execute((
+            "UPDATE character_money_transactions "
+            "SET user_id=?, char_id=? "
+            "WHERE user_id LIKE ? AND char_id=?"
+        ), data)
+
         return to_char_id
 
     def remove_char(self, user_id, deletor_id, char_id=None):
@@ -505,6 +546,12 @@ class ModuleCharacterPersistentClass(CharacterPersistentClass):
         data = (int(time.time()), user_id, char_id)
         self.cursor.execute((
             "UPDATE character_stats "
+            "SET deleted=? "
+            "WHERE user_id LIKE ? AND char_id=?"
+        ), data)
+
+        self.cursor.execute((
+            "UPDATE character_money_transactions "
             "SET deleted=? "
             "WHERE user_id LIKE ? AND char_id=?"
         ), data)
@@ -798,6 +845,62 @@ def stats(response: CommandMessageResponse):
 
     response.add_response_message(stats.gen_stat_message("de"))
     response.set_suggestions([message_controller.generate_text_user_char("Anzeigen", plain_user_id, char_id, response.get_orig_message())])
+    return response
+
+purse_command = MessageCommand([
+    MessageParam.init_user_id(),
+    MessageParam.init_char_id(),
+    MessageParam("money",       MessageParam.CONST_REGEX_NUM_Z, examples=["+100", "-100", "234"]),
+    MessageParam("description", MessageParam.CONST_REGEX_TEXT, examples=["Rüstung gekauft", "verschenkt"]),
+], "Geldbeutel", "purse", ["pocket"])
+@ModuleMessageController.add_method(purse_command)
+def stats(response: CommandMessageResponse):
+    message_controller = response.get_message_controller()
+    params = response.get_params()
+
+    user_id, response = message_controller.require_user_id(params, "user_id", response)
+    if user_id is None:
+        return response
+
+    plain_user_id = user_id[1:]
+
+    char_id, response = message_controller.require_char_id(params, "char_id", plain_user_id, response)
+    if char_id is None:
+        return response
+
+    character_persistent_class = message_controller.character_persistent_class  # type: ModuleCharacterPersistentClass
+
+    money_value = response.get_value("money")
+
+    if money_value is None:
+        response.add_response_message("*In deinem Geldbeutel befinden sich {balance} Krallen.*".format(
+            balance=character_persistent_class.get_balance(user_id, char_id)
+        ))
+        return response
+
+    money = int(money_value)
+
+    if money >= 0:
+        character_persistent_class.receive_money(user_id,char_id, money, "manual", response.get_value("description"))
+        response.add_response_message("*Du legst {money} Krallen in den Geldbeutel. Du hast nun {balance} Krallen.*".format(
+            money=money,
+            balance=character_persistent_class.get_balance(user_id, char_id)
+        ))
+    else:
+        balance = character_persistent_class.get_balance(user_id, char_id)
+        if balance < money*-1:
+            response.add_response_message("(Du kannst keine {money} Krallen aus deinem Geldbeutel nehmen. Du hast derzeit nur {balance} Krallen)".format(
+                money=money*-1,
+                balance=balance
+            ))
+            return response
+
+        character_persistent_class.send_money(user_id, char_id, money*-1, "manual", response.get_value("description"))
+        response.add_response_message("*Du nimmst {money} Krallen aus dem Geldbeutel. Du hast nun {balance} Krallen.*".format(
+            money=money*-1,
+            balance=character_persistent_class.get_balance(user_id, char_id)
+        ))
+
     return response
 
 stats_info_command = MessageCommand([

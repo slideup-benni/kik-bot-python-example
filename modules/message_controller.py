@@ -17,6 +17,7 @@ class MessageParam:
     CONST_REGEX_ALPHA = r"[a-z]+"
     CONST_REGEX_ALPHANUM = r"[a-z0-9]+"
     CONST_REGEX_NUM = r"[0-9]+"
+    CONST_REGEX_NUM_Z = r"[\-\+]?[0-9]+"
     CONST_REGEX_DIGIT = r"[0-9]"
     CONST_REGEX_USER_ID = r"@[a-z0-9\.\_]+"
     CONST_REGEX_COMMAND = r"\S+"
@@ -401,7 +402,10 @@ class CommandMessageResponse(MessageResponse):
         return self.values
 
     def get_value(self, key):
-        return self.get_values()[key]
+        values = self.get_values()
+        if key in values:
+            return values[key]
+        return None
 
     def get_command(self):
         return self.command

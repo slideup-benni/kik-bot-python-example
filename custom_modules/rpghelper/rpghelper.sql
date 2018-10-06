@@ -1,3 +1,15 @@
+CREATE TABLE character_money_transactions
+(
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id       TEXT    NOT NULL,
+    char_id       INTEGER NOT NULL,
+    money         INTEGER NOT NULL,
+    type          TEXT,
+    description   TEXT,
+    created       INTEGER NOT NULL,
+    deleted       INTEGER
+);
+
 CREATE TABLE character_stats
 (
     id      INTEGER PRIMARY KEY AUTOINCREMENT,
