@@ -1166,20 +1166,20 @@ def purse(response: CommandMessageResponse):
 
     if money_value is None:
         response.add_response_message("*In deinem Geldbeutel befinden sich {balance} Krallen.*".format(
-            balance=character_persistent_class.get_balance(user_id, char_id)
+            balance=character_persistent_class.get_balance(plain_user_id, char_id)
         ))
         return response
 
     money = int(money_value)
 
     if money >= 0:
-        character_persistent_class.receive_money(user_id,char_id, money, "manual", response.get_value("description"))
+        character_persistent_class.receive_money(plain_user_id,char_id, money, "manual", response.get_value("description"))
         response.add_response_message("*Du legst {money} Krallen in den Geldbeutel. Du hast nun {balance} Krallen.*".format(
             money=money,
-            balance=character_persistent_class.get_balance(user_id, char_id)
+            balance=character_persistent_class.get_balance(plain_user_id, char_id)
         ))
     else:
-        balance = character_persistent_class.get_balance(user_id, char_id)
+        balance = character_persistent_class.get_balance(plain_user_id, char_id)
         if balance < money*-1:
             response.add_response_message("(Du kannst keine {money} Krallen aus deinem Geldbeutel nehmen. Du hast derzeit nur {balance} Krallen)".format(
                 money=money*-1,
@@ -1187,10 +1187,10 @@ def purse(response: CommandMessageResponse):
             ))
             return response
 
-        character_persistent_class.send_money(user_id, char_id, money*-1, "manual", response.get_value("description"))
+        character_persistent_class.send_money(plain_user_id, char_id, money*-1, "manual", response.get_value("description"))
         response.add_response_message("*Du nimmst {money} Krallen aus dem Geldbeutel. Du hast nun {balance} Krallen.*".format(
             money=money*-1,
-            balance=character_persistent_class.get_balance(user_id, char_id)
+            balance=character_persistent_class.get_balance(plain_user_id, char_id)
         ))
 
     return response

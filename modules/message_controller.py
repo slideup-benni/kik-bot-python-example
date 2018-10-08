@@ -14,8 +14,8 @@ from modules.kik_user import User, LazyKikUser, LazyRandomKikUser
 
 
 class MessageParam:
-    CONST_REGEX_ALPHA = r"[a-z]+"
-    CONST_REGEX_ALPHANUM = r"[a-z0-9]+"
+    CONST_REGEX_ALPHA = r"[a-zäöüß]+"
+    CONST_REGEX_ALPHANUM = r"[a-zäöüß0-9]+"
     CONST_REGEX_NUM = r"[0-9]+"
     CONST_REGEX_NUM_Z = r"[\-\+]?[0-9]+"
     CONST_REGEX_DIGIT = r"[0-9]"
