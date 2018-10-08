@@ -10,4 +10,5 @@ pep8
 nose
 nose-cov
 beautifulsoup4
+regex
 

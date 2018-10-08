@@ -26,6 +26,27 @@ CREATE TABLE character_stats
     deleted INTEGER
 );
 
+CREATE TABLE character_work
+(
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id       TEXT    NOT NULL,
+    char_id       INTEGER NOT NULL,
+    job_id        INTEGER NOT NULL,
+    difficulty    INTEGER NOT NULL,
+    created       INTEGER NOT NULL,
+    completed     INTEGER,
+    deleted       INTEGER
+);
+
+CREATE TABLE jobs
+(
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    name          TEXT NOT NULL,
+    stat_ids      TEXT NOT NULL,
+    created       INTEGER NOT NULL,
+    deleted       INTEGER
+);
+
 CREATE TABLE quests
 (
     id                      INTEGER PRIMARY KEY AUTOINCREMENT,

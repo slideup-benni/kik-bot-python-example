@@ -2,7 +2,7 @@ import configparser
 import datetime
 import json
 import random
-import re
+import regex as re
 import sqlite3
 
 from flask_babel import gettext as _, get_locale
@@ -65,6 +65,43 @@ class MessageParam:
             return self.get_value_callback(self.name, params)
 
         return params[self.name]
+
+    @staticmethod
+    def init_multiple_selection(name, selection: list, required=False, validate_in_message=False, examples=None):
+        regex = r"((?P<{name}_sel>{sel})(\s*,\s*(?P<{name}_sel_add>{sel}))*)".format(
+            sel="|".join([re.escape(str(x).lower()) for x in selection]),
+            name=name
+        )
+
+        def get_value_cb(name, param_values):
+            items = []
+
+            if name + "_sel" in param_values and param_values[name + "_sel"] is not None:
+                items.append(param_values[name + "_sel"])
+
+            if name + "_sel_add" in param_values and param_values[name + "_sel_add"] is not None and isinstance(param_values[name + "_sel_add"], list):
+                items.extend(param_values[name + "_sel_add"])
+            elif name + "_sel_add" in param_values and param_values[name + "_sel_add"] is not None: # singe item
+                items.append(param_values[name + "_sel_add"])
+
+            return items
+
+        if examples is None:
+            examples = list(selection)
+            if len(selection) > 1:
+                for i in range(0,len(selection)):
+                    examples.append("{item1}, {item2}".format(
+                        item1 = selection[i],
+                        item2 = selection[(i+1)%len(selection)]
+                    ))
+            if len(selection) > 2:
+                for i in range(0,len(selection)):
+                    examples.append("{item1}, {item2}, {item3}".format(
+                        item1 = selection[i],
+                        item2 = selection[(i - 1) % len(selection)],
+                        item3 = selection[(i + 2) % len(selection)]
+                    ))
+        return MessageParam(name, regex, required, validate_in_message, examples=examples, get_value_callback=get_value_cb)
 
     @staticmethod
     def init_selection(name, selection: list, required=False, validate_in_message=False, examples=None):
@@ -153,9 +190,15 @@ class MessageParam:
 
 class MessageCommand:
 
-    def __init__(self, params: list, command_de, command_en, command_alts=None, help_command="Hilfe", hidden=False):
+    def __init__(self, params: list, command_de, command_en, command_alts=None, help_command=None, hidden=False, admin_only=False):
         self.hidden = hidden
-        self.help_command = help_command
+        if help_command is not None:
+            self.help_command = help_command
+        elif admin_only is False:
+            self.help_command = 'Hilfe'
+        else:
+            self.help_command = 'Admin-Hilfe'
+        self.admin_only = admin_only
         self.command = {
             'de': command_de,
             'en': command_en,
@@ -270,6 +313,17 @@ class MessageCommand:
 
         def method(controller, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User):
 
+            if self.admin_only is True and MessageController.is_admin(message, controller.config) is False:
+                response_messages.append(TextMessage(
+                    to=message.from_user,
+                    chat_id=message.chat_id,
+                    body=_("Fehler beim Aufruf des Befehls.\n\nNur Admins können diesen Befehl ausführen."),
+                    keyboards=[SuggestedResponseKeyboard(responses=[
+                        MessageController.generate_text_response(self.help_command),
+                    ])]
+                ))
+                return response_messages, user_command_status, user_command_status_data
+
             response_texts = []
             suggestions = []
             for response_message in response_messages:  # type: TextMessage
@@ -317,7 +371,16 @@ class MessageCommand:
                 ))
                 return response_messages, user_command_status, user_command_status_data
 
-            message_response = CommandMessageResponse(**{**command_message_response_data, "params": match.groupdict()})
+            params = {}
+            for key, value in match.capturesdict().items():
+                if len(value) == 0:
+                    params[key] = None
+                elif len(value) == 1:
+                    params[key] = value[0]
+                else:
+                    params[key] = value
+
+            message_response = CommandMessageResponse(**{**command_message_response_data, "params": params})
             response = func(message_response) # type: CommandMessageResponse
             response_messages = response.get_kik_response()
             user_command_status, user_command_status_data = response.get_user_command_status()

@@ -50,52 +50,58 @@ def claws_time_adjust(minutes, claw_per_minute):
     return claws_for_min(minutes)
 
 def work(minutes, difficulty, stat_points):
-    appendix = ""
+    min_blocked = None
     if difficulty == 1:
         claw_per_minute = 0.125
         if minutes > 11*60:
             min_blocked = random.randint(0, math.ceil(minutes/60-11))*15
             if min_blocked >= 45:
-                appendix = " und bist für {hours}:{minutes:02d} Stunden erschöpft. Du kannst in der Zeit weder arbeiten noch kämpfen.".format(
-                    hours=math.floor(min_blocked/60),
-                    minutes=min_blocked - math.floor(min_blocked / 60) * 60
-                )
+                min_blocked = None
     elif difficulty == 2:
         # 1/288*(x + 1/2)² + 7/128
         claw_per_minute = 1 / 288 * pow(int(stat_points) + 1 / 2, 2) + 7 / 128
         if minutes > 8*60:
             min_blocked = random.randint(0, math.ceil(minutes/60-8))*30
-            if min_blocked != 0:
-                appendix = " und bist für {hours}:{minutes:02d} Stunden erschöpft. Du kannst in der Zeit weder arbeiten noch kämpfen.".format(
-                    hours=math.floor(min_blocked/60),
-                    minutes=min_blocked - math.floor(min_blocked / 60) * 60
-                )
     else:
         # 1/240*(x + 3)² - 1/240
         claw_per_minute = 1 / 240 * pow(int(stat_points) + 3, 2) - 1 / 240
-        hours_bocked = math.ceil(minutes / 60) + random.randint(0, math.ceil(minutes / 60))
-        appendix = " und bist für {} Stunde(n) erschöpft. Du kannst in der Zeit weder arbeiten noch kämpfen.".format(hours_bocked)
+        min_blocked = (math.ceil(minutes / 60) + random.randint(0, math.ceil(minutes / 60)))*60
 
-    form_hours = math.floor(minutes/60)
-    form_minutes = minutes - math.floor(minutes / 60) * 60
+    money_base = math.ceil(claws_time_adjust(minutes, claw_per_minute))
+    money = money_base + random.randint(0, money_base)
+
+    return money, min_blocked
+
+def work_text(worked_minutes, money, min_blocked, appendix=None):
+    form_hours = math.floor(worked_minutes / 60)
+    form_minutes = worked_minutes - math.floor(worked_minutes / 60) * 60
 
     if form_hours != 0 and form_minutes != 0:
-        time = "{hours}:{minutes:02d} Stunden".format(hours=form_hours, minutes=form_minutes)
+        worked_time = "{hours}:{minutes:02d} Stunden".format(hours=form_hours, minutes=form_minutes)
     elif form_hours != 0:
-        time = "{hours} Stunden".format(hours=form_hours)
+        worked_time = "{hours} Stunden".format(hours=form_hours)
     else:
-        time = "{minutes} Minuten".format(minutes=form_minutes)
+        worked_time = "{minutes} Minuten".format(minutes=form_minutes)
 
-    claws_base = math.ceil(claws_time_adjust(minutes, claw_per_minute))
-    result = claws_base + random.randint(0, claws_base)
+    blocked_text = ""
+    if min_blocked is not None and min_blocked != 0:
+        blocked_text = " und bist für {hours}:{minutes:02d} Stunden erschöpft. Du kannst in der Zeit weder arbeiten noch kämpfen".format(
+            hours=math.floor(min_blocked / 60),
+            minutes=min_blocked - math.floor(min_blocked / 60) * 60
+        )
 
     # expl = "[{from_claws}~{to_claws}]".format(
     #     time=time,
-    #     from_claws=claws_base,
-    #     to_claws=(claws_base*2-1)
+    #     from_claws=money_base,
+    #     to_claws=(money_base*2-1)
     # )
 
-    return "*Du erhältst für deine {time} Arbeit {claws} Krallen{appendix}*".format(time=time, claws=result, appendix=appendix)
+    return "*Du erhältst für deine {time} Arbeit {claws} Krallen{blocked_text}.{appendix}*".format(
+        time=worked_time,
+        claws=money,
+        blocked_text=blocked_text,
+        appendix="" if appendix is None or appendix == "" else " " + appendix
+    )
 
 
 class CharacterStats:
@@ -471,6 +477,135 @@ class ModuleCharacterPersistentClass(CharacterPersistentClass):
 
         return self.cursor.fetchall()
 
+    def add_job(self, name, stat_ids):
+        self.connect_database()
+
+        self.cursor.execute((
+            "INSERT INTO jobs "
+            "(name, stat_ids, created) "
+            "VALUES (?, ?, ?);"
+        ), [
+            name,
+            json.dumps(stat_ids),
+            int(time.time())
+        ])
+
+    def get_all_jobs(self):
+        self.connect_database()
+
+        self.cursor.execute((
+            "SELECT * "
+            "FROM jobs "
+            "WHERE deleted IS NULL"
+        ))
+
+        columns = [column[0] for column in self.cursor.description]
+        results = []
+
+        for row in self.cursor:
+            dict_row = dict(zip(columns, row))
+            dict_row["stat_ids"] = json.loads(row["stat_ids"])
+            results.append(dict_row)
+
+        return results
+
+    def get_job_by_name(self, name):
+        self.connect_database()
+
+        self.cursor.execute((
+            "SELECT * "
+            "FROM jobs "
+            "WHERE deleted IS NULL "
+            "    AND name LIKE ? "
+            "ORDER BY created DESC "
+            "LIMIT 1"
+        ), [name])
+
+        row = self.cursor.fetchone()
+
+        if row is None:
+            return None
+
+        dict_row = dict(row)
+        dict_row["stat_ids"] = json.loads(row["stat_ids"])
+
+        return dict_row
+
+    def get_job_by_id(self, job_id):
+        self.connect_database()
+
+        self.cursor.execute((
+            "SELECT * "
+            "FROM jobs "
+            "WHERE id = ? "
+            "LIMIT 1"
+        ), [job_id])
+
+        row = self.cursor.fetchone()
+
+        if row is None:
+            return None
+
+        dict_row = dict(row)
+        dict_row["stat_ids"] = json.loads(row["stat_ids"])
+
+        return dict_row
+
+    def start_work(self, user_id, char_id, job_id, difficulty):
+        self.connect_database()
+
+        self.cursor.execute((
+            "UPDATE character_work "
+            "SET completed = created "
+            "WHERE completed IS NULL "
+            "    AND deleted IS NULL "
+            "    AND user_id = ? "
+            "    AND char_id = ?"
+        ), [user_id, char_id])
+
+        self.cursor.execute((
+            "INSERT INTO character_work "
+            "(user_id, char_id, job_id, difficulty, created) "
+            "VALUES (?,?,?,?,?)"
+        ), [user_id, char_id, job_id, difficulty, int(time.time())])
+
+    def current_work(self, user_id, char_id):
+        self.connect_database()
+
+        self.cursor.execute((
+            "SELECT * "
+            "FROM character_work "
+            "WHERE user_id = ? "
+            "    AND char_id = ? "
+            "    AND completed IS NULL "
+            "    AND deleted IS NULL "
+            "ORDER BY created DESC "
+            "LIMIT 1"
+        ), [user_id, char_id])
+
+        return self.cursor.fetchone()
+
+    def complete_work(self, work_row):
+        self.connect_database()
+
+        completed = int(time.time())
+
+        self.cursor.execute((
+            "UPDATE character_work "
+            "SET completed = ? "
+            "WHERE id = ?"
+        ), [completed, work_row["id"]])
+
+        self.cursor.execute((
+            "SELECT * "
+            "FROM character_work "
+            "WHERE id = ? "
+            "LIMIT 1"
+        ), [work_row["id"]])
+
+        return self.cursor.fetchone()
+
+
     def receive_money(self, user_id, char_id, money, money_type=None, description=None):
         self.connect_database()
 
@@ -533,6 +668,12 @@ class ModuleCharacterPersistentClass(CharacterPersistentClass):
             "WHERE user_id LIKE ? AND char_id=?"
         ), data)
 
+        self.cursor.execute((
+            "UPDATE character_work "
+            "SET user_id=?, char_id=? "
+            "WHERE user_id LIKE ? AND char_id=?"
+        ), data)
+
         return to_char_id
 
     def remove_char(self, user_id, deletor_id, char_id=None):
@@ -552,6 +693,12 @@ class ModuleCharacterPersistentClass(CharacterPersistentClass):
 
         self.cursor.execute((
             "UPDATE character_money_transactions "
+            "SET deleted=? "
+            "WHERE user_id LIKE ? AND char_id=?"
+        ), data)
+
+        self.cursor.execute((
+            "UPDATE character_work "
             "SET deleted=? "
             "WHERE user_id LIKE ? AND char_id=?"
         ), data)
@@ -676,7 +823,9 @@ easy_msg_work_cmd = MessageCommand([
 @ModuleMessageController.add_method(easy_msg_work_cmd)
 def easy_msg_work(response: CommandMessageResponse):
 
-    response.add_response_message(work(response.get_value("duration"), 1, 0))
+    minutes = int(response.get_value("duration"))
+    money, min_blocked = work(minutes, 1, 0)
+    response.add_response_message(work_text(minutes, money, min_blocked))
     return response
 
 med_msg_work_cmd = MessageCommand([
@@ -698,7 +847,9 @@ def med_msg_work(response: CommandMessageResponse):
         response.set_suggestions([response.get_command().get_example({**response.get_params(), "stat_points": stat_point}) for stat_point in range(1, 11)])
         return response
 
-    response.add_response_message(work(response.get_value("duration"), 2, int(response.get_value("stat_points"))))
+    minutes = int(response.get_value("duration"))
+    money, min_blocked = work(minutes, 2, int(response.get_value("stat_points")))
+    response.add_response_message(work_text(minutes, money, min_blocked))
     return response
 
 
@@ -721,7 +872,9 @@ def hard_msg_work(response: CommandMessageResponse):
         response.set_suggestions([response.get_command().get_example({**response.get_params(), "stat_points": stat_point}) for stat_point in range(1, 11)])
         return response
 
-    response.add_response_message(work(response.get_value("duration"), 3, int(response.get_value("stat_points"))))
+    minutes = int(response.get_value("duration"))
+    money, min_blocked = work(minutes, 3, int(response.get_value("stat_points")))
+    response.add_response_message(work_text(minutes, money, min_blocked))
     return response
 
 
@@ -847,6 +1000,145 @@ def stats(response: CommandMessageResponse):
     response.set_suggestions([message_controller.generate_text_user_char("Anzeigen", plain_user_id, char_id, response.get_orig_message())])
     return response
 
+
+add_job_command = MessageCommand([
+    MessageParam("job_name", MessageParam.CONST_REGEX_ALPHA, examples=["Kellner", "Gärtner"], required=True),
+    MessageParam.init_multiple_selection("stat_names", list(CharacterStats.get_all_stat_names("de")), required=True),
+], "Job-hinzufügen", "add-job", admin_only=True)
+@ModuleMessageController.add_method(add_job_command)
+def start_work(response: CommandMessageResponse):
+    message_controller = response.get_message_controller()
+    params = response.get_params()
+
+    stat_ids = set()
+    for stat_name in response.get_value("stat_names"):
+        stat_ids.add(CharacterStats.stat_id_from_name(stat_name, "de"))
+
+    character_persistent_class = message_controller.character_persistent_class  # type: ModuleCharacterPersistentClass
+
+    character_persistent_class.add_job(response.get_value("job_name"), list(stat_ids))
+
+    response.add_response_message("Der Job {job_name} wurde hinzugefügt.".format(job_name=params["job_name"]))
+    return response
+
+work_difficulty = {
+    1: ["easy", "leicht", "einfach"],
+    2: ["mittel", "normal", "medium"],
+    3: ["hart", "schwer", "hard"]
+}
+
+start_work_command = MessageCommand([
+    MessageParam.init_user_id(),
+    MessageParam.init_char_id(),
+    MessageParam("job_name", MessageParam.CONST_REGEX_ALPHA, examples=["Kellner", "Gärtner", "Heiler"], required=True),
+    MessageParam.init_selection("difficulty", sum(list(work_difficulty.values()), []))
+], "starte-Arbeit", "start-work", ["work-start", "Arbeit-starten"])
+@ModuleMessageController.add_method(start_work_command)
+def start_work(response: CommandMessageResponse):
+    message_controller = response.get_message_controller()
+    params = response.get_params()
+
+    user_id, response = message_controller.require_user_id(params, "user_id", response)
+    if user_id is None:
+        return response
+
+    plain_user_id = user_id[1:]
+
+    char_id, response = message_controller.require_char_id(params, "char_id", plain_user_id, response)
+    if char_id is None:
+        return response
+
+    character_persistent_class = message_controller.character_persistent_class  # type: ModuleCharacterPersistentClass
+
+    job_row = character_persistent_class.get_job_by_name(response.get_value("job_name"))
+    if job_row is None:
+        response.add_response_message("Der Job \"{}\" existiert noch nicht.".format(response.get_value("job_name")))
+        return response
+
+    char_stats_db = character_persistent_class.get_char_stats(plain_user_id, char_id)
+    stats = CharacterStats(char_stats_db) if char_stats_db is not None else CharacterStats.init_empty(plain_user_id, char_id)
+
+    difficulty_text = response.get_value("difficulty")
+    difficulty_id = None
+    if difficulty_text is not None:
+        for diff_id, diff_names in work_difficulty.items():
+            if difficulty_text in diff_names:
+                difficulty_id = diff_id
+                break
+
+    char_has_stats = True
+    for i in range(1, 8):
+        if stats.get_stat_by_id(i) is None or stats.get_stat_by_id(i) == 0:
+            char_has_stats = False
+            break
+
+    used_difficulty = 1 if char_has_stats is False else 2 if difficulty_id is None else difficulty_id
+    character_persistent_class.start_work(plain_user_id, char_id, job_row["id"], used_difficulty)
+
+    response.add_response_message("*Du beginnst deine {diff_text} Arbeit als {job_name}*".format(
+        diff_text={1:"einfache", 2:"normale", 3:"harte"}[used_difficulty],
+        job_name=job_row["name"]
+    ))
+
+    return response
+
+
+finish_work_command = MessageCommand([
+    MessageParam.init_user_id(),
+    MessageParam.init_char_id(),
+], "beende-Arbeit", "finish-work", ["work-end", "Arbeit-beenden", "Feierabend"])
+@ModuleMessageController.add_method(finish_work_command)
+def finish_work(response: CommandMessageResponse):
+    message_controller = response.get_message_controller()
+    params = response.get_params()
+
+    user_id, response = message_controller.require_user_id(params, "user_id", response)
+    if user_id is None:
+        return response
+
+    plain_user_id = user_id[1:]
+
+    char_id, response = message_controller.require_char_id(params, "char_id", plain_user_id, response)
+    if char_id is None:
+        return response
+
+    character_persistent_class = message_controller.character_persistent_class  # type: ModuleCharacterPersistentClass
+
+    work_row = character_persistent_class.current_work(plain_user_id, char_id)
+    if work_row is None:
+        response.add_response_message("(Du arbeitest derzeit nicht.)")
+        return response
+
+    work_row = character_persistent_class.complete_work(work_row)
+    job_row = character_persistent_class.get_job_by_id(work_row["job_id"])
+    char_stats_db = character_persistent_class.get_char_stats(plain_user_id, char_id)
+    stats = CharacterStats(char_stats_db) if char_stats_db is not None else CharacterStats.init_empty(plain_user_id, char_id)
+
+    minutes = math.ceil((int(work_row["completed"]) - int(work_row["created"])) / 60)
+    money, min_blocked = work(
+        minutes,
+        int(work_row["difficulty"]),
+        max([stats.get_stat_by_id(stat_id) for stat_id in job_row["stat_ids"]])
+    )
+
+    character_persistent_class.receive_money(plain_user_id, char_id, money, "working", "gearbeitet für {hours}:{minutes:02d}h als {job_name}".format(
+        hours=math.floor(minutes / 60),
+        minutes=int(minutes - math.floor(minutes / 60) * 60),
+        job_name=job_row["name"]
+    ))
+
+    response.add_response_message(work_text(
+        minutes,
+        money,
+        min_blocked,
+        "\n\nDu legst die Krallen in deinen Geldbeutel. Dort befinden sich jetzt {money} Krallen.".format(
+            money=character_persistent_class.get_balance(plain_user_id, char_id)
+        )
+    ))
+
+    return response
+
+
 purse_command = MessageCommand([
     MessageParam.init_user_id(),
     MessageParam.init_char_id(),
@@ -854,7 +1146,7 @@ purse_command = MessageCommand([
     MessageParam("description", MessageParam.CONST_REGEX_TEXT, examples=["Rüstung gekauft", "verschenkt"]),
 ], "Geldbeutel", "purse", ["pocket"])
 @ModuleMessageController.add_method(purse_command)
-def stats(response: CommandMessageResponse):
+def purse(response: CommandMessageResponse):
     message_controller = response.get_message_controller()
     params = response.get_params()
 
@@ -902,6 +1194,7 @@ def stats(response: CommandMessageResponse):
         ))
 
     return response
+
 
 stats_info_command = MessageCommand([
     MessageParam("user_id", MessageParam.CONST_REGEX_USER_ID, examples=MessageParam.random_user),
