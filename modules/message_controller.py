@@ -44,8 +44,8 @@ class MessageParam:
 
     def get_help_desc(self):
         if self.required is True:
-            return self.name
-        return "(" + self.name + ")"
+            return "<" + self.name + ">"
+        return "(<" + self.name + ">)"
 
     def get_name(self):
         return self.name
@@ -205,14 +205,23 @@ class MessageCommand:
             '_alts': [] if command_alts is None else command_alts
         }
 
-        all_commands = set(self.command["_alts"])
-        all_commands.add(command_de)
-        all_commands.add(command_en)
-
         self.params = [
-            MessageParam("command", MessageParam.CONST_REGEX_COMMAND, required=True, examples=list(all_commands))
+            MessageParam("command", MessageParam.CONST_REGEX_COMMAND, required=True, examples=self.get_all_command_names())
         ]
         self.params.extend(params)
+
+    def is_admin_only(self):
+        return self.admin_only
+
+    def is_hidden(self):
+        return self.hidden
+
+    def get_all_command_names(self):
+        all_commands = set()
+        all_commands.add(self.command["de"])
+        all_commands.add(self.command["en"])
+        all_commands.union(set(self.command["_alts"]))
+        return list(all_commands)
 
     def add_param(self, param: MessageParam):
         self.params.append(param)
@@ -272,7 +281,7 @@ class MessageCommand:
 
         examples = set()
         for i in range(0, count*10):
-            examples.add(self.get_random_example(response, fixed_params))
+            examples.add(u"\U000027A1\U0000FE0F " + self.get_random_example(response, fixed_params))
             if len(examples) == count:
                 break
 
@@ -1714,7 +1723,7 @@ def msg_cmd_unauth(self, message, message_body, message_body_c, response_message
 # Befehl i-am
 #
 iam_command = MessageCommand([
-    MessageParam.init_user_id(),
+    MessageParam.init_user_id(required=True),
     MessageParam.init_char_id(),
 ], "Ich-Bin", "i-am", ["iam"])
 @MessageController.add_method(iam_command)
@@ -1761,6 +1770,68 @@ def quest_accept(response: CommandMessageResponse):
         char_id=user["is_char_id"]
     ))
     response.set_suggestions(["Anzeigen"])
+    return response
+
+
+#
+# Befehl Befehle
+#
+commands_command = MessageCommand([
+], "Befehle", "commands")
+@MessageController.add_method(commands_command)
+def commands(response: CommandMessageResponse):
+    message_controller = response.get_message_controller()
+
+    show_commands = []
+    for cmd_id, obj in enumerate(message_controller.methods):
+        cmds = obj["cmds"] # type: MessageCommand
+        if isinstance(cmds, MessageCommand) and cmds.is_admin_only() is False and cmds.is_hidden() is False:
+            show_commands.append(cmds.get_help_desc())
+
+
+    response.add_response_message(_("Folgende weitere Befehle sind möglich:\n\n"
+                                    "{more_commands}\n\n"
+                                    "Für weitere Informationen zu einem Befehl schreibe").format(
+        more_commands="\n".join([u"\U000027A1\U0000FE0F " + cmd for cmd in show_commands])
+    ))
+    return response
+
+
+#
+# Befehl Befehl-Info
+#
+command_info_command = MessageCommand([
+    MessageParam("command_name", MessageParam.CONST_REGEX_COMMAND, required=True, examples=["Ich-Bin", "Vorlage", "Befehle"])
+], "Befehl", "command", ["Befehl-Info", "command-info"])
+@MessageController.add_method(command_info_command)
+def command_info(response: CommandMessageResponse):
+    message_controller = response.get_message_controller()
+    desc_command = message_controller.get_command(response.get_value("command_name")) # type: MessageCommand
+
+    if desc_command is None:
+        response.add_response_message(_("Der Befehl \"{command}\" existiert nicht.").format(
+            command=response.get_value("command_name")
+        ))
+        response.set_suggestions(["Hilfe", "Befehle"])
+        return response
+
+    if isinstance(desc_command, MessageCommand) is False:
+        response.add_response_message(_("Der Befehl \"{command}\" wurde noch nicht migriert und besitzt keine Hilfe.").format(
+            command=response.get_value("command_name")
+        ))
+        response.set_suggestions(["Hilfe", "Befehle"])
+        return response
+
+    response.add_response_message(_("Die Struktur des Befehls sieht wie folgt aus:\n"
+                                    "{command_structure}\n\n\n"
+                                    "{examples_5}\n\n\n"
+                                    "alternative Namen für diesen Befehl (Aliasse):\n"
+                                    "{aliasses}").format(
+        command_structure=desc_command.get_help_desc(),
+        examples_5=desc_command.get_random_example_text(5, response, {"command": desc_command.get_command_loc()}),
+        aliasses="\n".join(u"\U000027A1\U0000FE0F " + name for name in desc_command.get_all_command_names())
+    ))
+
     return response
 
 
@@ -2063,7 +2134,7 @@ def msg_cmd_roll(self, message: TextMessage, message_body, message_body_c, respo
     return response_messages, user_command_status, user_command_status_data
 
 
-debug_url_cmd = MessageCommand([], "Debug-URL", "debug-url", hidden=True)
+debug_url_cmd = MessageCommand([], "Debug-URL", "debug-url", hidden=True, admin_only=True)
 @MessageController.add_method(debug_url_cmd)
 def quest_status(response: CommandMessageResponse):
 
