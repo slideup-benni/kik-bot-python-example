@@ -819,7 +819,7 @@ class ModuleMessageController(MessageController):
 
 easy_msg_work_cmd = MessageCommand([
     MessageParam.init_duration_minutes("duration", required=True)
-], "leichte-arbeit", "easy-work")
+], "leichte-arbeit", "easy-work", hidden=True)
 @ModuleMessageController.add_method(easy_msg_work_cmd)
 def easy_msg_work(response: CommandMessageResponse):
 
@@ -831,7 +831,7 @@ def easy_msg_work(response: CommandMessageResponse):
 med_msg_work_cmd = MessageCommand([
     MessageParam.init_duration_minutes("duration", required=True),
     MessageParam("stat_points", MessageParam.CONST_REGEX_NUM, required=True, validate_in_message=True, examples=range(1, 11))
-], "mittlere-arbeit", "medium-work",["mittelschwere-arbeit"])
+], "mittlere-arbeit", "medium-work",["mittelschwere-arbeit"], hidden=True)
 @ModuleMessageController.add_method(med_msg_work_cmd)
 def med_msg_work(response: CommandMessageResponse):
 
@@ -856,7 +856,7 @@ def med_msg_work(response: CommandMessageResponse):
 hard_msg_work_cmd = MessageCommand([
     MessageParam.init_duration_minutes("duration", required=True),
     MessageParam("stat_points", MessageParam.CONST_REGEX_NUM, required=True, validate_in_message=True, examples=range(1, 11))
-], "schwere-arbeit", "hard-work")
+], "schwere-arbeit", "hard-work", hidden=True)
 @ModuleMessageController.add_method(hard_msg_work_cmd)
 def hard_msg_work(response: CommandMessageResponse):
 
@@ -1196,6 +1196,83 @@ def purse(response: CommandMessageResponse):
     return response
 
 
+negotiate_command = MessageCommand([
+    MessageParam.init_user_id(),
+    MessageParam.init_char_id(),
+    MessageParam("money",       MessageParam.CONST_REGEX_NUM_Z, examples=["+100", "-100", "234"], required=True),
+    MessageParam("description", MessageParam.CONST_REGEX_TEXT, examples=["Rüstung gekauft", "verschenkt"]),
+], "verhandeln", "negotiate", [])
+@ModuleMessageController.add_method(negotiate_command)
+def neogate(response: CommandMessageResponse):
+    message_controller = response.get_message_controller()
+    params = response.get_params()
+
+    user_id, response = message_controller.require_user_id(params, "user_id", response)
+    if user_id is None:
+        return response
+
+    plain_user_id = user_id[1:]
+
+    char_id, response = message_controller.require_char_id(params, "char_id", plain_user_id, response)
+    if char_id is None:
+        return response
+
+    character_persistent_class = message_controller.character_persistent_class  # type: ModuleCharacterPersistentClass
+
+    char_stats_db = character_persistent_class.get_char_stats(plain_user_id, char_id)
+    stats = CharacterStats(char_stats_db) if char_stats_db is not None else CharacterStats.init_empty(plain_user_id, char_id)
+
+    money = int(response.get_value("money"))
+
+    charisma_modificator = {
+        0:  lambda x: x,
+        1:  lambda x: x * 1.25,
+        2:  lambda x: x * 1.1,
+        3:  lambda x: x,
+        4:  lambda x: x * (1.00 - random.randint(1, 10)/100),
+        5:  lambda x: x * (1.00 - random.randint(1, 25)/100),
+        6:  lambda x: x * (0.90 - random.randint(1, 15)/100),
+        7:  lambda x: x * (0.85 - random.randint(1, 35)/100),
+        8:  lambda x: x * (0.80 - random.randint(1, 30)/100),
+        9:  lambda x: x * (0.70 - random.randint(1, 20)/100),
+        10: lambda x: x * (0.65 - random.randint(1, 35)/100),
+    }
+
+    description = response.get_value("description")
+    if description is None:
+        description = ""
+        description_appx = "verhandelt von {money} Krallen"
+    else:
+        description_appx = " (verhandelt von {money} Krallen)"
+
+    if money >= 0:
+        negotiated_money = 2 * money - round(charisma_modificator[stats.get_stat_by_id(4)](money))
+
+        character_persistent_class.receive_money(plain_user_id, char_id, negotiated_money, "negotiate", description + description_appx.format(money=money))
+        response.add_response_message("*Du verhandelst den Preis auf {negotiated_money} Krallen und legst die Krallen in den Geldbeutel. Du hast nun {balance} Krallen.*".format(
+            negotiated_money=negotiated_money,
+            balance=character_persistent_class.get_balance(plain_user_id, char_id)
+        ))
+    else:
+        negotiated_money = round(charisma_modificator[stats.get_stat_by_id(4)](money))
+
+        balance = character_persistent_class.get_balance(plain_user_id, char_id)
+        if balance < negotiated_money*-1:
+            response.add_response_message("(Du verhandelst den Preis auf {negotiated_money} Krallen, aber du kannst diese nicht bezahlen. Du hast derzeit nur {balance} Krallen)".format(
+                negotiated_money=negotiated_money*-1,
+                balance=balance
+            ))
+            return response
+
+        character_persistent_class.send_money(plain_user_id, char_id, negotiated_money * -1, "negotiate", description + description_appx.format(money=money*-1))
+        response.add_response_message("*Du verhandelst den Preis auf {negotiated_money} Krallen und nimmst diese aus dem Geldbeutel. Du hast nun {balance} Krallen.*".format(
+            negotiated_money=negotiated_money*-1,
+            balance=character_persistent_class.get_balance(plain_user_id, char_id)
+        ))
+
+    return response
+
+
 stats_info_command = MessageCommand([
     MessageParam("user_id", MessageParam.CONST_REGEX_USER_ID, examples=MessageParam.random_user),
     MessageParam("char_id", MessageParam.CONST_REGEX_NUM, examples=range(1,4)),
@@ -1240,7 +1317,7 @@ def stats_info(response: CommandMessageResponse):
 
 quest_command = MessageCommand([
     MessageParam("page", MessageParam.CONST_REGEX_NUM, examples=[2,3]),
-], "Quests", "quests", ["schwarzes-Brett", "bulletin-board"])
+], "Quests", "quests", ["schwarzes-Brett", "bulletin-board"], admin_only=True)
 @ModuleMessageController.add_method(quest_command)
 def quests(response: CommandMessageResponse):
     message_controller = response.get_message_controller()
@@ -1266,7 +1343,7 @@ def quests(response: CommandMessageResponse):
 
 quest_info_command = MessageCommand([
     MessageParam("caption", r"\".*?\"", examples=["\"Heilkräuter für den Schmied\"", "\"Lotte\"", "\"Quest-Überschrift\""], required=True),
-], "Quest-Info", "quest-info", ["Quest-Informationen", "quest-information"])
+], "Quest-Info", "quest-info", ["Quest-Informationen", "quest-information"], admin_only=True)
 @ModuleMessageController.add_method(quest_info_command)
 def quest_info(response: CommandMessageResponse):
     message_controller = response.get_message_controller()
@@ -1330,7 +1407,7 @@ quest_accept_command = MessageCommand([
     MessageParam.init_user_id(),
     MessageParam.init_char_id(),
     MessageParam("caption", r"\".*?\"", examples=["\"Heilkräuter für den Schmied\"", "\"Lotte\"", "\"Quest-Überschrift\""], required=True),
-], "Quest-annehmen", "quest-accept", ["quest-take", "quest-assume"])
+], "Quest-annehmen", "quest-accept", ["quest-take", "quest-assume"], admin_only=True)
 @ModuleMessageController.add_method(quest_accept_command)
 def quest_accept(response: CommandMessageResponse):
     message_controller = response.get_message_controller()  # type: ModuleMessageController
@@ -1391,7 +1468,7 @@ quest_task_command = MessageCommand([
     MessageParam("caption", r"\".*?\"", examples=["\"Heilkräuter für den Schmied\"", "\"Lotte\"", "\"Quest-Überschrift\""], required=True),
     MessageParam("part_name", r"\".*?\"", examples=["\"Beginn\"", "\"Beim Schmied\"", "\"Bei der Stinky's Cove\"", "\"Bei Myrrul's Haus\"", "\"Kiste abgestellt und im Haus\"",
                                                     "\"Bei der Stinky's Cove (Rückweg)\"", "\"Zurück beim Schmied\""], required=True),
-], "Quest-Aufgabe", "quest-task", ["quest-take", "quest-assume"])
+], "Quest-Aufgabe", "quest-task", ["quest-take", "quest-assume"], admin_only=True)
 @ModuleMessageController.add_method(quest_task_command)
 def quest_task(response: CommandMessageResponse):
     message_controller = response.get_message_controller()  # type: ModuleMessageController
@@ -1449,7 +1526,7 @@ def quest_task(response: CommandMessageResponse):
 quest_status_command = MessageCommand([
     MessageParam.init_user_id(),
     MessageParam.init_char_id()
-], "Quest-Status", "quest-status", ["my-quests", "meine-quests", "Questbuch", "questbook"])
+], "Quest-Status", "quest-status", ["my-quests", "meine-quests", "Questbuch", "questbook"], admin_only=True)
 @ModuleMessageController.add_method(quest_status_command)
 def quest_status(response: CommandMessageResponse):
     message_controller = response.get_message_controller()  # type: ModuleMessageController
