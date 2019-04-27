@@ -890,7 +890,7 @@ class MessageController:
         user = response.get_user()
 
         if params[key] is None and use_linked_char is True and user.is_user_id is not None:
-            return "@"+user.is_user_id, response
+            return "@"+user.is_user_id.lower(), response
 
         if params[key] is None and MessageController.is_aliased(message):
             response.add_response_message(_("Leider konnte ich deinen Nutzer nicht zuordnen. Bitte führe den Befehl erneut mit deiner Nutzer-Id aus:"))
@@ -910,7 +910,7 @@ class MessageController:
         if params[key] is None:
             user_id = "@" + message.from_user
 
-        return user_id, response
+        return user_id.lower(), response
 
     def require_char_id(self, params, key, user_id, response: CommandMessageResponse, use_linked_char=True):
         command = response.get_command()
