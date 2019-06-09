@@ -41,6 +41,8 @@ from flask_babel import gettext as _
 from kik import KikApi, Configuration
 from kik.messages import messages_from_json, TextMessage, SuggestedResponseKeyboard, Message, TextResponse
 from werkzeug.exceptions import BadRequest
+from wtforms.validators import InputRequired, ValidationError
+from wtforms.widgets import PasswordInput
 
 from modules.character_persistent_class import CharacterPersistentClass
 from modules.kik_user import LazyKikUser
@@ -178,9 +180,22 @@ def json_recursive(eval_ctx, value):
     return result
 
 
+def check_debug_password(username:str, password:str):
+    hash = hashlib.md5((
+        username.lower() +
+        "-" +
+        default_config.get("BotAuthCode", "abcdef01-2345-6789-abcd-ef0123456789")
+    ).encode()).hexdigest()
+
+    print(hash)
+
+    return hash == password.lower()
+
+
 class DebugMessageForm(Form):
     message_body = TextAreaField("Message Body")
-    message_from_user = StringField("Username")
+    message_from_user = StringField("Username", validators=[InputRequired()])
+    message_password = StringField("Local Password (Not Kik!)", widget=PasswordInput(hide_value=False), validators=[InputRequired()])
     message_type = SelectField("Type", choices=[
         ("direct_bot","direct_bot"),
         ("direct_other_user","direct_other_user"),
@@ -192,6 +207,13 @@ class DebugMessageForm(Form):
         ("de", "Deutsch"),
         ("en", "English")
     ])
+
+    def validate_message_password(form, field):
+        if check_debug_password(form.message_from_user.data, form.message_password.data) is False:
+            raise ValidationError('Wrong Password!')
+
+
+
 
 
 @app.route("/debug", methods=["GET", "POST"])
@@ -211,10 +233,18 @@ def debug():
     response_messages = list()  # type: List[TextMessage]
     keyboards = list()  # type: List[TextResponse]
 
+    if request.method == "GET":
+        form.message_from_user.data = request.args.get("user", "", str)
+        form.message_password.data = request.args.get("pass", "", str)
+        form.message_lang.data = request.args.get("lang", "", str)
+
+    lang = form.message_lang.data if form.message_lang.data != "default" else message_controller.get_config().get("BaseLanguage", "en")
+
     if request.method == 'POST' and form.validate():
 
         message = None
         message_body = re.sub("^@{bot_username}\s*".format(bot_username=bot_username), "", form.message_body.data.strip())
+        message_body = re.sub(r"\r\n|\r|\n", "\n", message_body)
 
         if form.message_type.data == "direct_bot":
             message = TextMessage(
@@ -304,7 +334,6 @@ def debug():
             LazyKikUser.character_persistent_class = message_controller.character_persistent_class
             user_db = message_controller.character_persistent_class.get_user(message.from_user)
             user = LazyKikUser.init(user_db) if user_db is not None else LazyKikUser.init_new_user(message.from_user, bot_username)
-            lang = form.message_lang.data if form.message_lang.data != "default" else message_controller.get_config().get("BaseLanguage", "en")
             with force_locale(lang):
                 response_messages = message_controller.process_message(message, user)
                 print(json.dumps(response_messages, default=lambda o: getattr(o, '__dict__', str(o)), indent=4, sort_keys=True))
@@ -315,11 +344,79 @@ def debug():
     return render_template(
         'debug.html',
         form=form,
+        lang=lang,
         messages=response_messages,
         keyboards=keyboards,
         bot_username=message_controller.bot_username,
         config_file=os.path.basename(config_file),
         database_file=os.path.basename(message_controller.character_persistent_class.database_path)
+    )
+
+
+@app.route("/web", methods=["GET", "POST"])
+def web():
+    global kik_api
+
+    if custom_module is not None and hasattr(custom_module, "ModuleMessageController"):
+        message_controller = custom_module.ModuleMessageController(bot_username, config_file)
+    else:
+        message_controller = MessageController(bot_username, config_file)
+
+    log_requests = message_controller.get_config().get("LogRequests", "False")
+    if app.debug is False and log_requests is not True and str(log_requests).lower() != "true":
+        return Response(status=403)
+
+    response_messages = list()  # type: List[TextMessage]
+    keyboards = list()  # type: List[TextResponse]
+    lang = message_controller.get_config().get("BaseLanguage", "en")
+    body = ""
+
+    hash = hashlib.md5((request.remote_addr).encode()).hexdigest()
+    user_id = "nobody_"+hash[0:16]
+
+    if request.method == "GET":
+        lang = request.args.get("lang", lang, str)
+        if request.args.get("luser", None, str) is not None:
+            body = "Anzeigen @"+request.args.get("luser", None, str)
+        else:
+            body = request.args.get("q", "", str)
+
+    message_body = re.sub("^@{bot_username}\s*".format(bot_username=bot_username), "", body.strip())
+    message_body = re.sub(r"\r\n|\r|\n", "\n", message_body)
+
+    message = TextMessage(
+        to=None,
+        id='2826c590-c590-46ef-a1ec-8205f6884cf0',
+        chat_id='d3662c07b2a5c8623019328ea95525ed7d7cfa098bc25c637b67d33c7eed3e87',
+        mention=None,
+        participants=[user_id],
+        from_user=user_id,
+        delay=None,
+        read_receipt_requested=True,
+        timestamp=int(time.time()),
+        metadata=None,
+        keyboards=[],
+        chat_type='direct',
+        body=message_body,
+        type_time=None
+    )
+
+    LazyKikUser.character_persistent_class = message_controller.character_persistent_class
+    user_db = message_controller.character_persistent_class.get_user(message.from_user)
+    user = LazyKikUser.init(user_db) if user_db is not None else LazyKikUser.init_new_user(message.from_user, bot_username)
+    with force_locale(lang):
+        response_messages = message_controller.process_message(message, user)
+        print(json.dumps(response_messages, default=lambda o: getattr(o, '__dict__', str(o)), indent=4, sort_keys=True))
+
+    if len(response_messages) > 0 and len(response_messages[len(response_messages) - 1].keyboards) > 0:
+        keyboards = response_messages[len(response_messages) - 1].keyboards[0].responses
+
+    return render_template(
+        'web.html',
+        messages=response_messages,
+        keyboards=keyboards,
+        bot_username=message_controller.bot_username,
+        lang=lang
     )
 
 @babel.localeselector

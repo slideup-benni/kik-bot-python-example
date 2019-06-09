@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+    {% from "_formhelpers.html" import render_field %}
+    <link rel="stylesheet" type="text/css" href="../static/styles.css">
+    <link rel="terms" href="path/to/terms/of/use.html">
+    <link rel="privacy" href="path/to/privacy/policy.html">
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <script type="text/javascript" src="https://code.jquery.com/jquery-3.3.1.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js" integrity="sha384-UO2eT0CpHqdSJQ6hJty5KVphtPhzWj9WO1clHTMGa3JDZwrnQq4sF86dIHNDz0W1" crossorigin="anonymous"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js" integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIy6OrQ6VrjIEaFf/nJGzIxFDsf4x0xIM+B07jRM" crossorigin="anonymous"></script>
+    <script type="text/javascript" src="https://cdn.kik.com/kik/2.3.7/kik.js"></script>
+    <script type="text/javascript" src="../static/common.js"></script>
+</head>
+<body id="view_web">
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <a class="navbar-brand" href="#">{{ bot_username }} Web Oberfl&auml;che</a>
+    <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarNavDropdown" aria-controls="navbarNavDropdown" aria-expanded="false" aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navbarNavDropdown">
+        <ul class="navbar-nav mr-auto">
+            <li class="nav-item active">
+                <a class="nav-link" href="{{ url_for('web', q='Befehle') }}">Befehle</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="{{ url_for('web', q='Hilfe') }}">Hilfe</a>
+            </li>
+            <li class="nav-item dropdown">
+                <a class="nav-link dropdown-toggle" href="#" id="navbarDropdownMenuLink" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                    Aktionen
+                </a>
+                <div class="dropdown-menu" aria-labelledby="navbarDropdownMenuLink">
+                    {% for keyboard in keyboards %}
+                        <a class="dropdown-item" href="{{ url_for('web', q=keyboard.body) }}">{{ keyboard.body }}</a>
+                    {% endfor %}
+                </div>
+            </li>
+        </ul>
+        <form class="form-inline">
+            <div class="input-group">
+                <div class="input-group-prepend">
+                    <span class="input-group-text" id="basic-addon1">@</span>
+                </div>
+                <input name="luser" type="text" class="form-control" placeholder="Benutzername" aria-label="Benutzername" aria-describedby="basic-addon1">
+            </div>
+            <button class="btn btn-outline-light my-2 my-sm-0" type="submit">Anzeigen</button>
+        </form>
+    </div>
+</nav>
+<div class="container text-left">
+    <div class="row mt-5">
+        <div class="col-sm-8">
+            <div class="card shadow-sm">
+                {% for message in messages %}
+                    {% if message|attr("pic_url") %}
+                        <img class="card-img-top" src="{{ message.pic_url }}"/>
+                    {% endif %}
+                    {% if message|attr("body") %}
+                        <div class="card-body">
+                            <p class="card-text">{{ message.body|nl2br }}</p>
+                        </div>
+                    {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+        <div class="col-sm-4">
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <h4 class="my-0 font-weight-normal">Aktionen</h4>
+                </div>
+                <div class="btn-group-vertical">
+                    {% for keyboard in keyboards %}
+                        <a href="{{ url_for('web', q=keyboard.body) }}" class="btn btn-secondary btn-lg" role="button">{{ keyboard.body }}</a>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="card shadow-sm mt-5">
+                <div class="card-header">
+                    <h4 class="my-0 font-weight-normal">eigener Befehl</h4>
+                </div>
+                <div class="card-body">
+                    <form>
+                        <div class="form-row">
+                            <div class="col">
+                                <input name="q" type="text" class="form-control" placeholder="Befehl" aria-label="Befehl">
+                            </div>
+                            <div class="col-auto">
+                                <button class="btn btn-outline-primary my-2 my-sm-0" type="submit">Absenden</button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>

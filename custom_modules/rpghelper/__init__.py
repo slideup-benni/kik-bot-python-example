@@ -278,31 +278,54 @@ class ModuleCharacterPersistentClass(CharacterPersistentClass):
         if char is None:
             return None
 
-        stats = self.get_char_stats(user_id, char_id)
-        if stats is None:
-            self.cursor.execute((
-                "INSERT INTO character_stats "
-                "(user_id, char_id, stat_1, stat_2, stat_3, stat_4, stat_5, stat_6, stat_7) "
-                "VALUES (?, ?, ?, ? , ?, ?, ?, ?, ?) "
-            ), [
-                user_id,
-                int(char_id),
-                0 if stat_id != 1 else int(stat_points),
-                0 if stat_id != 2 else int(stat_points),
-                0 if stat_id != 3 else int(stat_points),
-                0 if stat_id != 4 else int(stat_points),
-                0 if stat_id != 5 else int(stat_points),
-                0 if stat_id != 6 else int(stat_points),
-                0 if stat_id != 7 else int(stat_points),
-            ])
-        else:
-            self.cursor.execute((
-                "UPDATE character_stats "
-                "SET {} = ? "
-                "WHERE user_id LIKE ? AND char_id=? AND deleted IS NULL "
-            ).format("stat_"+str(int(stat_id))), [stat_points, user_id, char_id])
+        self.get_create_char_stats(char)
 
-        return self.get_char_stats(user_id, char_id)
+        self.cursor.execute((
+            "UPDATE character_stats "
+            "SET {} = ? "
+            "WHERE user_id LIKE ? AND char_id=? AND deleted IS NULL "
+        ).format("stat_"+str(int(stat_id))), [stat_points, char["user_id"], char["char_id"]])
+
+        return self.get_char_stats(char["user_id"], char["char_id"])
+
+    def set_char_exp(self, user_id, exp, char_id=None):
+        self.connect_database()
+
+        if char_id is None:
+            char_id = self.get_first_char_id(user_id)
+
+        char = self.get_char(user_id, char_id)
+        if char is None:
+            return None
+
+        self.get_create_char_stats(char)
+
+        self.cursor.execute((
+            "UPDATE character_stats "
+            "SET exp = ? "
+            "WHERE user_id LIKE ? AND char_id=? AND deleted IS NULL "
+        ), [exp, char["user_id"], char["char_id"]])
+
+        return self.get_char_stats(char["user_id"], char["char_id"])
+
+    def get_create_char_stats(self, char):
+        self.connect_database()
+
+        stats = self.get_char_stats(char["user_id"], char["char_id"])
+        if stats is not None:
+            return stats
+
+        self.cursor.execute((
+            "INSERT INTO character_stats "
+            "(user_id, char_id, stat_1, stat_2, stat_3, stat_4, stat_5, stat_6, stat_7, exp) "
+            "VALUES (?, ?, ?, ? , ?, ?, ?, ?, ?, ?) "
+        ), [
+            char["user_id"],
+            int(char["char_id"]),
+            0, 0, 0, 0, 0, 0, 0, 3000
+        ])
+
+        return self.get_char_stats(char["user_id"], char["char_id"])
 
     def get_char_stats(self, user_id, char_id=None):
         self.connect_database()
@@ -719,12 +742,17 @@ class ModuleMessageController(MessageController):
     def is_static_file(self, path):
         if path == "stats.html":
             return True
+        if path == "map.png":
+            return True
 
         return MessageController.is_static_file(self, path)
 
     def send_file(self, path):
         if path == "stats.html":
             return send_file(os.path.dirname(os.path.realpath(__file__)) + '/rpghelper_stat_texts.html')
+
+        if path == "stats.html":
+            return send_file(os.path.dirname(os.path.realpath(__file__)) + '/map.')
 
         return MessageController.send_file(self, path)
 
@@ -877,6 +905,51 @@ def hard_msg_work(response: CommandMessageResponse):
     response.add_response_message(work_text(minutes, money, min_blocked))
     return response
 
+set_exp_command = MessageCommand([
+    MessageParam.init_user_id(),
+    MessageParam.init_char_id(),
+    MessageParam("exp", MessageParam.CONST_REGEX_NUM_Z, required=True, validate_in_message=True, examples=range(3000, 3300, 50))
+], "Erfahrungspunkte-setzen", "set-exp", ["Exp-setzen"], require_admin=True)
+@ModuleMessageController.add_method(set_exp_command)
+def set_stats(response: CommandMessageResponse):
+    message_controller = response.get_message_controller()
+    params = response.get_params()
+
+    user_id, response = message_controller.require_user_id(params, "user_id", response)
+    if user_id is None:
+        return response
+
+    plain_user_id = user_id[1:]
+
+    char_id, response = message_controller.require_char_id(params, "char_id", plain_user_id, response)
+    if char_id is None:
+        return response
+
+
+
+    character_persistent_class = message_controller.character_persistent_class  # type: ModuleCharacterPersistentClass
+
+    char_stats_db = character_persistent_class.get_char_stats(plain_user_id, char_id)
+    stats_before = CharacterStats(char_stats_db) if char_stats_db is not None else CharacterStats.init_empty(plain_user_id, char_id)
+
+    exp_value = response.get_value("exp")
+    if exp_value[0] in ["+", "-"]:
+        exp = stats_before.get_exp()*100 + int(exp_value)
+    else:
+        exp = int(exp_value)
+
+    stats = CharacterStats(character_persistent_class.set_char_exp(plain_user_id, exp, char_id=char_id))
+
+    response.add_response_message("Du hast die mEXP von @{user_id} von {exp_before} auf {exp} gesetzt. "
+                                  "@{user_id} hat nun {exp_ava} Punkte übrig.".format(
+        user_id=plain_user_id,
+        exp_before=int(stats_before.get_exp()*100),
+        exp=int(stats.get_exp()*100),
+        exp_ava=math.floor(stats.get_available_exp())
+    ))
+    return response
+
+
 
 set_stats_command = MessageCommand([
     MessageParam.init_user_id(),
@@ -1004,7 +1077,7 @@ def stats(response: CommandMessageResponse):
 add_job_command = MessageCommand([
     MessageParam("job_name", MessageParam.CONST_REGEX_ALPHA, examples=["Kellner", "Gärtner"], required=True),
     MessageParam.init_multiple_selection("stat_names", list(CharacterStats.get_all_stat_names("de")), required=True),
-], "Job-hinzufügen", "add-job", admin_only=True)
+], "Job-hinzufügen", "add-job", require_admin=True)
 @ModuleMessageController.add_method(add_job_command)
 def start_work(response: CommandMessageResponse):
     message_controller = response.get_message_controller()
@@ -1317,7 +1390,7 @@ def stats_info(response: CommandMessageResponse):
 
 quest_command = MessageCommand([
     MessageParam("page", MessageParam.CONST_REGEX_NUM, examples=[2,3]),
-], "Quests", "quests", ["schwarzes-Brett", "bulletin-board"], admin_only=True)
+], "Quests", "quests", ["schwarzes-Brett", "bulletin-board"], require_admin=True)
 @ModuleMessageController.add_method(quest_command)
 def quests(response: CommandMessageResponse):
     message_controller = response.get_message_controller()
@@ -1343,7 +1416,7 @@ def quests(response: CommandMessageResponse):
 
 quest_info_command = MessageCommand([
     MessageParam("caption", r"\".*?\"", examples=["\"Heilkräuter für den Schmied\"", "\"Lotte\"", "\"Quest-Überschrift\""], required=True),
-], "Quest-Info", "quest-info", ["Quest-Informationen", "quest-information"], admin_only=True)
+], "Quest-Info", "quest-info", ["Quest-Informationen", "quest-information"], require_admin=True)
 @ModuleMessageController.add_method(quest_info_command)
 def quest_info(response: CommandMessageResponse):
     message_controller = response.get_message_controller()
@@ -1407,7 +1480,7 @@ quest_accept_command = MessageCommand([
     MessageParam.init_user_id(),
     MessageParam.init_char_id(),
     MessageParam("caption", r"\".*?\"", examples=["\"Heilkräuter für den Schmied\"", "\"Lotte\"", "\"Quest-Überschrift\""], required=True),
-], "Quest-annehmen", "quest-accept", ["quest-take", "quest-assume"], admin_only=True)
+], "Quest-annehmen", "quest-accept", ["quest-take", "quest-assume"], require_admin=True)
 @ModuleMessageController.add_method(quest_accept_command)
 def quest_accept(response: CommandMessageResponse):
     message_controller = response.get_message_controller()  # type: ModuleMessageController
@@ -1468,7 +1541,7 @@ quest_task_command = MessageCommand([
     MessageParam("caption", r"\".*?\"", examples=["\"Heilkräuter für den Schmied\"", "\"Lotte\"", "\"Quest-Überschrift\""], required=True),
     MessageParam("part_name", r"\".*?\"", examples=["\"Beginn\"", "\"Beim Schmied\"", "\"Bei der Stinky's Cove\"", "\"Bei Myrrul's Haus\"", "\"Kiste abgestellt und im Haus\"",
                                                     "\"Bei der Stinky's Cove (Rückweg)\"", "\"Zurück beim Schmied\""], required=True),
-], "Quest-Aufgabe", "quest-task", ["quest-take", "quest-assume"], admin_only=True)
+], "Quest-Aufgabe", "quest-task", ["quest-take", "quest-assume"], require_admin=True)
 @ModuleMessageController.add_method(quest_task_command)
 def quest_task(response: CommandMessageResponse):
     message_controller = response.get_message_controller()  # type: ModuleMessageController
@@ -1526,7 +1599,7 @@ def quest_task(response: CommandMessageResponse):
 quest_status_command = MessageCommand([
     MessageParam.init_user_id(),
     MessageParam.init_char_id()
-], "Quest-Status", "quest-status", ["my-quests", "meine-quests", "Questbuch", "questbook"], admin_only=True)
+], "Quest-Status", "quest-status", ["my-quests", "meine-quests", "Questbuch", "questbook"], require_admin=True)
 @ModuleMessageController.add_method(quest_status_command)
 def quest_status(response: CommandMessageResponse):
     message_controller = response.get_message_controller()  # type: ModuleMessageController

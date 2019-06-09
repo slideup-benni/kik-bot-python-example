@@ -2,6 +2,9 @@ import configparser
 import datetime
 import json
 import random
+import time
+from typing import Union
+
 import regex as re
 import sqlite3
 
@@ -23,10 +26,11 @@ class MessageParam:
     CONST_REGEX_COMMAND = r"\S+"
     CONST_REGEX_TEXT = r".+"
 
-    def __init__(self, name, regex, required=False, validate_in_message=False, examples=None, get_value_callback=None):
+    def __init__(self, name, regex, required=False, validate_in_message=False, examples=None, get_value_callback=None, default_value=None):
         self.get_value_callback = get_value_callback
         self.validate_in_message = validate_in_message
         self.name = name.strip()
+        self.default_value = default_value
         self.regex = regex
         self.required = required
         self.examples = examples if examples is not None else []
@@ -62,9 +66,10 @@ class MessageParam:
     def get_value(self, params):
 
         if callable(self.get_value_callback):
-            return self.get_value_callback(self.name, params)
+            value = self.get_value_callback(self.name, params)
+            return value if value is not None else self.default_value
 
-        return params[self.name]
+        return params[self.name] if params[self.name] is not None else self.default_value
 
     @staticmethod
     def init_multiple_selection(name, selection: list, required=False, validate_in_message=False, examples=None):
@@ -190,15 +195,32 @@ class MessageParam:
 
 class MessageCommand:
 
-    def __init__(self, params: list, command_de, command_en, command_alts=None, help_command=None, hidden=False, admin_only=False):
+
+    def __init__(self, params: list, command_de, command_en, command_alts=None, help_command=None, hidden=False, require_admin=False, require_auth=False, require_group=False, require_self: Union[bool, str]=False):
+        """
+
+        :param params:
+        :param command_de:
+        :param command_en:
+        :param command_alts:
+        :param help_command:
+        :param hidden:
+        :param require_admin: The command can executed only when the message.user is admin or any other require condition is complied
+        :param require_auth: The command can executed only when the message.user is authed, admin or message.chat_id is authed group or any other require condition is complied
+        :param require_group: The command can executed only when the message.user is admin or message.chat_id is authed or any other require condition is complied
+        :param require_self: The command can executed only when the message.user is admin or the given value of parameter is None or message.user or any other require condition is complied
+        """
         self.hidden = hidden
         if help_command is not None:
             self.help_command = help_command
-        elif admin_only is False:
+        elif require_admin is False:
             self.help_command = 'Hilfe'
         else:
             self.help_command = 'Admin-Hilfe'
-        self.admin_only = admin_only
+        self.require_admin = require_admin
+        self.require_auth = require_auth
+        self.require_group = require_group
+        self.require_self = require_self
         self.command = {
             'de': command_de,
             'en': command_en,
@@ -211,7 +233,16 @@ class MessageCommand:
         self.params.extend(params)
 
     def is_admin_only(self):
-        return self.admin_only
+        return self.require_admin
+
+    def is_auth_only(self):
+        return self.require_auth
+
+    def is_require_group(self):
+        return self.require_group
+
+    def is_require_self(self):
+        return self.require_self is not False
 
     def is_hidden(self):
         return self.hidden
@@ -220,7 +251,7 @@ class MessageCommand:
         all_commands = set()
         all_commands.add(self.command["de"])
         all_commands.add(self.command["en"])
-        all_commands.union(set(self.command["_alts"]))
+        all_commands = all_commands.union(set(self.command["_alts"]))
         return list(all_commands)
 
     def add_param(self, param: MessageParam):
@@ -322,7 +353,7 @@ class MessageCommand:
 
         def method(controller, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User):
 
-            if self.admin_only is True and MessageController.is_admin(message, controller.config) is False:
+            if self.require_admin is True and controller.is_admin(message) is False:
                 response_messages.append(TextMessage(
                     to=message.from_user,
                     chat_id=message.chat_id,
@@ -330,6 +361,24 @@ class MessageCommand:
                     keyboards=[SuggestedResponseKeyboard(responses=[
                         MessageController.generate_text_response(self.help_command),
                     ])]
+                ))
+                return response_messages, user_command_status, user_command_status_data
+
+            if self.require_auth is True and \
+                    message.chat_id != controller.config.get("KikGroupChatId", "") and \
+                    user.is_authed() is False and \
+                    controller.is_admin(message) is False:
+                response_messages.append(TextMessage(
+                    to=message.from_user,
+                    chat_id=message.chat_id,
+                    body=_("Du bist nicht berechtigt diesen Befehl auszuführen!\n"
+                           "Bitte melde dich in der Gruppe #{kik_group_id} und erfrage eine Berechtigung oder führe dort folgenden Befehl aus:\n\n"
+                           "@{bot_username} auth @{user_id}").format(
+                        kik_group_id=controller.config.get("KikGroup", "somegroup"),
+                        bot_username=controller.bot_username,
+                        user_id=user.get_user_id()
+                    ),
+                    keyboards=[SuggestedResponseKeyboard(responses=[MessageController.generate_text_response("Hilfe")])]
                 ))
                 return response_messages, user_command_status, user_command_status_data
 
@@ -397,6 +446,44 @@ class MessageCommand:
         return method
 
 
+class MessageCommandDB(MessageCommand):
+
+    def __init__(self, row: sqlite3.Row):
+        self.db_row = row
+        self.db_id = row["id"]
+        super().__init__([], row["command"], row["command"],
+                         command_alts=json.loads(row["alt_commands"]) if row["alt_commands"] is not None and row["alt_commands"] != "" else None,
+                         help_command=None,
+                         hidden=True,
+                         require_admin=False,
+                         require_auth=False
+                         )
+
+    def get_regex(self):
+        if len(self.params) == 1:
+            return r"^\s*{}\s*.*?$".format(self.params[0].get_regex(True))
+        return super(MessageCommand).get_regex()
+
+class AdditionalActions:
+
+    def __init__(self, name: str):
+        self.name = name
+        self.actions = list()
+
+    def add_action(self, title:str, action: str):
+        self.actions.append({"title":title, "action":action})
+
+
+class ResponseMessage:
+    pass
+
+
+class PictureResponseMessage(ResponseMessage):
+
+    def __init__(self, pic_url):
+        self.pic_url = pic_url
+
+
 class MessageResponse:
 
     def __init__(self, message_controller, orig_message: TextMessage, response_messages: list, user_command_status, user_command_status_data, user: User, suggestions=None,
@@ -409,6 +496,7 @@ class MessageResponse:
         self.orig_message = orig_message
         self.message_controller = message_controller  # type: MessageController
         self.forced_message = forced_message
+        self.additional_actions = list()
 
     def get_user(self):
         return self.user  #type: User
@@ -428,7 +516,7 @@ class MessageResponse:
     def get_message_body(self):
         return self.forced_message
 
-    def add_response_message(self, message: str):
+    def add_response_message(self, message: Union[str, ResponseMessage]):
         self.response_messages.append(message)
 
     def add_response_messages(self, messages: list):
@@ -438,18 +526,45 @@ class MessageResponse:
     def set_suggestions(self, suggestions: list):
         self.suggestions = suggestions
 
+    def request_is_direct_bot(self):
+        return self.orig_message.chat_type == "direct"
+
+    def request_is_direct_user(self):
+        return self.orig_message.chat_type == "private" and len(self.orig_message.participants) == 2
+
+    def request_is_private_group(self):
+        return self.orig_message.chat_type == "private" and len(self.orig_message.participants) != 2
+
+    def request_is_public_group(self):
+        return self.orig_message.chat_type == "public"
+
+    def get_all_group_users(self):
+        return self.orig_message.participants
+
+    def add_additional_actions(self, actions: AdditionalActions):
+        self.additional_actions.append(actions)
+
     def get_kik_response(self):
         kik_responses = []
         num_resp = len(self.response_messages)
         for r in range(0, num_resp):
-            message_dict = {
-                "to":  self.orig_message.from_user,
-                "chat_id": self.orig_message.chat_id,
-                "body": self.response_messages[r],
-            }
-            if r == num_resp-1 and len(self.suggestions) != 0:
-                message_dict["keyboards"] = [SuggestedResponseKeyboard(responses=[MessageController.generate_text_response(keyboard) for keyboard in self.suggestions])]
-            kik_responses.append(TextMessage(**message_dict))
+            if isinstance(self.response_messages[r], str):
+                message_dict = {
+                    "to":  self.orig_message.from_user,
+                    "chat_id": self.orig_message.chat_id,
+                    "body": self.response_messages[r],
+                }
+                if r == num_resp-1 and len(self.suggestions) != 0:
+                    message_dict["keyboards"] = [SuggestedResponseKeyboard(responses=[MessageController.generate_text_response(keyboard) for keyboard in self.suggestions])]
+                kik_responses.append(TextMessage(**message_dict))
+
+            elif isinstance(self.response_messages[r], PictureResponseMessage):
+                kik_responses.append(PictureMessage(
+                    to=self.orig_message.from_user,
+                    chat_id=self.orig_message.chat_id,
+                    pic_url=self.response_messages[r].pic_url,
+                ))
+
         return kik_responses
 
 
@@ -485,11 +600,13 @@ class CommandMessageResponse(MessageResponse):
 
 class MessageController:
     methods = list()
+    static_method = None
 
     def __init__(self, bot_username, config_file):
         self.config = self.read_config(config_file)
         self.bot_username = bot_username
         self.character_persistent_class = CharacterPersistentClass(self.config, bot_username)
+        self.update_static_commands()
 
     @staticmethod
     def read_config(config_file):
@@ -672,23 +789,23 @@ class MessageController:
         split[0] = MessageController.get_command_text(split[0])
         return TextResponse(" ".join(split))
 
-    @staticmethod
-    def check_auth(user: User, message, config, auth_command=False):
-        if auth_command is False and message.chat_id == config.get("KikGroupChatId", ""):
+    def check_auth(self, user: User, message, auth_command=False):
+        if auth_command is False and message.chat_id == self.config.get("KikGroupChatId", ""):
             return True
 
 
-        if user.is_authed() is False and MessageController.is_admin(message, config) is False:
+        if user.is_authed() is False and self.is_admin(message) is False:
             return TextMessage(
                 to=message.from_user,
                 chat_id=message.chat_id,
                 body=_("Du bist nicht berechtigt diesen Befehl auszuführen!\n" +
-                       "Bitte melde dich in der Gruppe #{kik_group_id} und erfrage eine Berechtigung.").format(kik_group_id=config.get("KikGroup", "somegroup")),
-                keyboards=[SuggestedResponseKeyboard(responses=[MessageController.generate_text_response("Hilfe")])]
+                       "Bitte melde dich in der Gruppe #{kik_group_id} und erfrage eine Berechtigung.").format(kik_group_id=self.config.get("KikGroup", "somegroup")),
+                keyboards=[SuggestedResponseKeyboard(responses=[self.generate_text_response("Hilfe")])]
             )
         return True
 
-    def create_char_messages(self, char_data: sqlite3.Row, message, user_command_status, user_command_status_data, user: User):
+    # depricated when search refactored
+    def create_char_messages_old(self, char_data: sqlite3.Row, message, user_command_status, user_command_status_data, user: User):
         response_messages = []
         keyboard_responses = []
         body_char_appendix = ""
@@ -748,6 +865,55 @@ class MessageController:
 
         return (response_messages, user_command_status, user_command_status_data)
 
+    def create_char_messages(self, char_data: sqlite3.Row, response: CommandMessageResponse):
+        suggestions = []
+        body_char_appendix = ""
+        dyn_message_data = {}
+
+        if "prev_char_id" in char_data.keys() and char_data["prev_char_id"] is not None:
+            dyn_message_data['left'] = MessageController.generate_text_user_char("Anzeigen", char_data["user_id"], char_data["prev_char_id"], response.get_orig_message())
+            suggestions.append(u"\U00002B05\U0000FE0F")
+
+        if "next_char_id" in char_data.keys() and char_data["next_char_id"] is not None:
+            dyn_message_data['right'] = MessageController.generate_text_user_char("Anzeigen", char_data["user_id"], char_data["next_char_id"], response.get_orig_message())
+            suggestions.append(u"\U000027A1\U0000FE0F")
+
+        if dyn_message_data != {}:
+            body_char_appendix = _("\n\n(Weitere Charaktere des Nutzers vorhanden: {icon_left} und {icon_right} zum navigieren)").format(
+                icon_left=u"\U00002B05\U0000FE0F",
+                icon_right=u"\U000027A1\U0000FE0F"
+            )
+            response.user_command_status = CharacterPersistentClass.STATUS_DYN_MESSAGES
+            response.user_command_status_data = dyn_message_data
+
+        if char_data["user_id"] == MessageController.get_from_userid(response.get_orig_message()):
+            suggestions.append(MessageController.generate_text_user_char("Bild-setzen", char_data["user_id"], char_data["char_id"], response.get_orig_message()))
+
+
+        suggestions.append("Liste")
+
+        pic_url = self.character_persistent_class.get_char_pic_url(char_data["user_id"], char_data["char_id"])
+
+        if pic_url is False:
+            body_char_appendix += _("\n\nCharakter-Bilder müssen vor dem Anzeigen bestätigt werden.")
+        elif pic_url is not None:
+            response.add_response_message(PictureResponseMessage(pic_url))
+
+        body = _("{char_text}\n\n---\nCharakter von {from_user}\nErstellt von {creator_user}\nErstellt am {created:%d.%m.%Y %H:%M}{appendix}").format(
+            char_text=str(char_data["text"]).format(
+                user=response.get_user()
+            ),
+            from_user=self.get_name(char_data["user_id"], append_user_id=True),
+            creator_user=self.get_name(char_data['creator_id'], append_user_id=True),
+            created=datetime.datetime.fromtimestamp(char_data['created']),
+            appendix=body_char_appendix,
+        )
+
+        response.add_response_messages(MessageController.split_messages(body))
+        response.set_suggestions(suggestions)
+
+        return response
+
     @staticmethod
     def split_messages(message_body, split_char="\n", max_chars=1500):
         if split_char == "":
@@ -784,19 +950,51 @@ class MessageController:
         else:
             return user["name_or_id"]
 
+    def update_static_commands(self):
+        all_static_methods = self.character_persistent_class.get_all_static_messages()
+        current_static_methods = {obj["cmds"].db_id: (cmd_id, obj) for cmd_id, obj in enumerate(MessageController.methods) if isinstance(obj["cmds"], MessageCommandDB)}
+
+        for db_row in all_static_methods:
+            # update
+            if db_row["id"] in current_static_methods:
+                (cmd_id, obj) = current_static_methods[db_row["id"]]
+                if obj["cmds"].db_row != db_row:
+                    commands = MessageCommandDB(db_row)
+                    obj["func"] = commands.get_method(MessageController.static_method)
+                    obj["cmds"] = commands
+                    MessageController.methods[cmd_id] = obj
+                current_static_methods.pop(db_row["id"], None)
+
+            # insert
+            else:
+                commands = MessageCommandDB(db_row)
+                MessageController.methods.append({
+                "func": commands.get_method(MessageController.static_method),
+                "cmds": commands
+            })
+
+        # delete
+        for csm in current_static_methods:
+            MessageController.methods.remove(csm)
+
+
     @staticmethod
     def is_aliased(message):
-        return len(message.from_user) == 52
+        return MessageController.is_aliased_user(message.from_user)
+
+    @staticmethod
+    def is_aliased_user(user_id):
+        return len(user_id) == 52
 
     @staticmethod
     def get_from_userid(message):
         return message.from_user
 
-    @staticmethod
-    def is_admin(message: Message, config):
-        if message.type == "public":
-            return False
-        return message.from_user.lower() in [x.strip().lower() for x in config.get("Admins", "admin1").split(',')]
+    def is_admin(self, message: Message):
+        user_db = self.character_persistent_class.get_user(message.from_user.lower())
+        if int(user_db["is_admin"]) == 1:
+            return True
+        return message.from_user.lower() in [x.strip().lower() for x in self.config.get("Admins", "admin1").split(',')]
 
     @staticmethod
     def get_command_id(command):
@@ -844,7 +1042,7 @@ class MessageController:
         if command_id is None:
             return None
 
-        return MessageController.methods[command_id]['cmds']
+        return MessageController.methods[command_id]['cmds'] # type: Union[dict, MessageCommand]
 
     @staticmethod
     def get_command_text(command_str):
@@ -862,16 +1060,18 @@ class MessageController:
     def add_method(commands):
         def add_method_decore(func):
 
-            if isinstance(commands, MessageCommand):
-                func = commands.get_method(func)
-
             MessageController.methods.append({
-                "func": func,
+                "func": func if isinstance(commands, MessageCommand) is False else commands.get_method(func),
                 "cmds": commands
             })
             return func
 
         return add_method_decore
+
+    @staticmethod
+    def set_static_method(func):
+        MessageController.static_method = func
+        return func
 
     @staticmethod
     def get_error_response(message, command="Hilfe"):
@@ -912,7 +1112,7 @@ class MessageController:
 
         return user_id.lower(), response
 
-    def require_char_id(self, params, key, user_id, response: CommandMessageResponse, use_linked_char=True):
+    def require_char_id(self, params, key, user_id, response: CommandMessageResponse, use_linked_char=True, use_first=False):
         command = response.get_command()
         chars = self.character_persistent_class.get_all_user_chars(user_id)
         user = response.get_user()
@@ -927,7 +1127,7 @@ class MessageController:
             response.set_suggestions(["Vorlage @{}".format(user_id)])
             return None, response
 
-        if linked_char_id is None and len(chars) > 1 and params[key] is None:
+        if linked_char_id is None and len(chars) > 1 and params[key] is None and use_first is False:
 
             chars_txt = ""
             for char in chars:
@@ -951,6 +1151,8 @@ class MessageController:
         char_id = params[key] if linked_char_id is None else linked_char_id
         if len(chars) == 1 and params[key] is None:
             char_id = chars[0]["char_id"]
+        if char_id is None and use_first and params[key] is None:
+            char_id = chars[0]["char_id"]
 
         found = False
         for char in chars:
@@ -962,6 +1164,7 @@ class MessageController:
             response.add_response_message(_("Der Charakter mit der Id {} konnte nicht gefunden werden.").format(char_id))
             response.set_suggestions([command.get_example({**params, "char_id": char["char_id"]}) for char in chars][:12])
             return None, response
+
         return int(char_id), response
 
 #
@@ -972,7 +1175,7 @@ def msg_cmd_add(self, message, message_body, message_body_c, response_messages, 
     if len(message_body.split(None, 2)) == 3 and message_body.split(None, 2)[1][0] == "@" and message_body.split(None, 2)[2].strip() != "":
         selected_user = message_body.split(None, 2)[1][1:]
 
-        auth = self.check_auth(user, message, self.config)
+        auth = self.check_auth(user, message)
         if selected_user != self.get_from_userid(message) and auth is not True:
             return [auth], user_command_status, user_command_status_data
 
@@ -1049,7 +1252,7 @@ def msg_cmd_change(self, message, message_body, message_body_c, response_message
         char_id = int(message_body.split(None, 3)[2])
         text = message_body_c.split(None, 3)[3].strip()
 
-        auth = self.check_auth(user, message, self.config)
+        auth = self.check_auth(user, message)
         if user_id != self.get_from_userid(message) and auth is not True:
             return [auth], user_command_status, user_command_status_data
 
@@ -1085,7 +1288,7 @@ def msg_cmd_change(self, message, message_body, message_body_c, response_message
     elif len(message_body.split(None, 2)) == 3 and message_body.split(None, 2)[1][0] == "@" and message_body.split(None, 2)[2].strip() != "":
         user_id = message_body.split(None, 2)[1][1:].strip()
 
-        auth = self.check_auth(user, message, self.config)
+        auth = self.check_auth(user, message)
         if user_id != self.get_from_userid(message) and auth is not True:
             return [auth], user_command_status, user_command_status_data
 
@@ -1132,7 +1335,7 @@ def msg_cmd_set_pic(self, message, message_body, message_body_c, response_messag
         user_id = message_body.split(None, 2)[1][1:].strip()
         char_id = int(message_body.split(None, 2)[2])
 
-        auth = self.check_auth(user, message, self.config)
+        auth = self.check_auth(user, message)
         if user_id != self.get_from_userid(message) and auth is not True:
             return [auth], user_command_status, user_command_status_data
 
@@ -1145,7 +1348,7 @@ def msg_cmd_set_pic(self, message, message_body, message_body_c, response_messag
         user_id = message_body.split(None, 1)[1][1:].strip()
         char_id = None
 
-        auth = self.check_auth(user, message, self.config)
+        auth = self.check_auth(user, message)
         if user_id != self.get_from_userid(message) and auth is not True:
             return [auth], user_command_status, user_command_status_data
 
@@ -1170,90 +1373,39 @@ def msg_cmd_set_pic(self, message, message_body, message_body_c, response_messag
 #
 # Befehl Anzeigen
 #
-@MessageController.add_method({"de": "Anzeigen", "en": "show", "_alts": ["Steckbrief", "Stecki"]})
-def msg_cmd_show(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User):
-    char_data = None
-    chars = None
-    char_name = None
+msg_cmd_show_command = MessageCommand([
+    MessageParam.init_user_id(),
+    MessageParam.init_char_id(required=False)
+], "Anzeigen", "show", ["Steckbrief", "Stecki"])
+@MessageController.add_method(msg_cmd_show_command)
+def msg_cmd_show(response: CommandMessageResponse):
+    message_controller = response.get_message_controller()
+    params = response.get_params()
 
-    if len(message_body.split(None, 2)) == 3 and message_body.split(None, 2)[1][0] == "@" and message_body.split(None, 2)[2].isdigit():
-        selected_user = message_body.split(None, 2)[1][1:].strip()
-        char_id = int(message_body.split(None, 2)[2])
-    elif len(message_body.split(None, 2)) == 3 and message_body.split(None, 2)[1][0] == "@" and message_body.split(None, 2)[2].strip() != "":
-        selected_user = message_body.split(None, 2)[1][1:].strip()
-        char_name = message_body.split(None, 2)[2].strip()
-        chars = self.character_persistent_class.find_char(char_name, selected_user)
-        if len(chars) == 1:
-            char_id = chars[0]['char_id']
-            char_data = chars[0]
-        else:
-            char_id = None
-    elif len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1].isdigit():
-        selected_user = self.get_from_userid(message)
-        char_id = int(message_body.split(None, 1)[1])
-    elif len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1][0] == "@":
-        selected_user = message_body.split(None, 1)[1][1:].strip()
-        char_id = None
-    elif len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1].strip() != "":
-        char_name = message_body.split(None, 1)[1].strip()
-        chars = self.character_persistent_class.find_char(char_name, self.get_from_userid(message))
-        selected_user = self.get_from_userid(message)
-        if len(chars) == 1:
-            char_id = chars[0]['char_id']
-            char_data = chars[0]
-        else:
-            char_id = None
-    else:
-        selected_user = self.get_from_userid(message)
-        char_id = None
+    user_id, response = message_controller.require_user_id(params, "user_id", response)
+    if user_id is None:
+        return response
 
-    if chars is None and char_data is None and selected_user is not None:
-        char_data = self.character_persistent_class.get_char(selected_user, char_id)
+    plain_user_id = user_id[1:]
 
-    if chars is not None and len(chars) == 0 and char_name is not None:
-        response_messages.append(TextMessage(
-            to=message.from_user,
-            chat_id=message.chat_id,
-            body=_("Es wurde kein Charakter mit dem Namen {char_name} des Nutzers @{user_id} gefunden").format(char_name=char_name, user_id=selected_user),
-            keyboards=[SuggestedResponseKeyboard(responses=[MessageController.generate_text_response("Liste")])]
-        ))
-    elif chars is not None and len(chars) > 1:
-        resp = []
+    char_id, response = message_controller.require_char_id(params, "char_id", plain_user_id, response, use_first=True)
+    if char_id is None:
+        return response
 
+    character_persistent_class = message_controller.character_persistent_class  # type: CharacterPersistentClass
+    char_data = character_persistent_class.get_char(plain_user_id, char_id)
+
+    chars = character_persistent_class.get_all_user_chars(plain_user_id)
+    if len(chars) > 1:
+        add_ac = AdditionalActions(_("Weitere Charaktere"))
         for char in chars:
-            resp.append(self.generate_text_response_user_char("Anzeigen", char['user_id'], char['char_id'], message))
+            if int(char["char_id"]) != int(char_data["char_id"]):
+                add_ac.add_action(char["char_id"], message_controller.generate_text_user_char("Anzeigen", plain_user_id, int(char["char_id"]), response.get_orig_message()))
 
-        resp.append(MessageController.generate_text_response("Liste"))
+        response.add_additional_actions(add_ac)
 
-        response_messages.append(TextMessage(
-            to=message.from_user,
-            chat_id=message.chat_id,
-            body=_("Es wurden {cnt} Charaktere mit dem Namen {char_name} des Nutzers @{user_id} gefunden").format(
-                cnt=len(chars),
-                char_name=char_name,
-                user_id=selected_user
-            ),
-            keyboards=[SuggestedResponseKeyboard(responses=resp)]
-        ))
-    elif char_data is None and char_id is not None:
-        response_messages.append(TextMessage(
-            to=message.from_user,
-            chat_id=message.chat_id,
-            body=_("Keine Daten zum {char_id}. Charakter des Nutzers @{user_id} gefunden").format(char_id=char_id, user_id=selected_user),
-            keyboards=[SuggestedResponseKeyboard(responses=[MessageController.generate_text_response("Liste")])]
-        ))
-    elif char_data is None:
-        response_messages.append(TextMessage(
-            to=message.from_user,
-            chat_id=message.chat_id,
-            body=_("Keine Daten zum Nutzer @{user_id} gefunden").format(user_id=selected_user),
-            keyboards=[SuggestedResponseKeyboard(responses=[MessageController.generate_text_response("Liste")])]
-        ))
-    else:
-        (char_resp_msg, user_command_status, user_command_status_data) = self.create_char_messages(char_data, message, user_command_status, user_command_status_data, user)
-        response_messages += char_resp_msg
-    return response_messages, user_command_status, user_command_status_data
-
+    response = message_controller.create_char_messages(char_data, response)
+    return response
 
 #
 # Befehl Verschieben
@@ -1297,7 +1449,7 @@ def msg_cmd_move(self, message, message_body, message_body_c, response_messages,
                 ])]
             ))
 
-        elif self.is_admin(message, self.config):
+        elif self.is_admin(message):
             to_char_id = self.character_persistent_class.move_char(selected_from_user, selected_to_user, char_id)
 
             if char_id is not None and char_id != CharacterPersistentClass.get_min_char_id():
@@ -1365,7 +1517,7 @@ def msg_cmd_delete(self, message, message_body, message_body_c, response_message
                 keyboards=[SuggestedResponseKeyboard(responses=[MessageController.generate_text_response("Liste")])]
             ))
 
-        elif self.is_admin(message, self.config):
+        elif self.is_admin(message):
             self.character_persistent_class.remove_char(selected_user, self.get_from_userid(message), char_id)
 
             if char_id is not None:
@@ -1424,7 +1576,7 @@ def msg_cmd_delete_last(self, message, message_body, message_body_c, response_me
                 ])]
             ))
 
-        elif self.is_admin(message, self.config):
+        elif self.is_admin(message):
             self.character_persistent_class.remove_last_char_change(selected_user, self.get_from_userid(message))
 
             if char_id is not None:
@@ -1458,276 +1610,306 @@ def msg_cmd_delete_last(self, message, message_body, message_body_c, response_me
 #
 # Befehl Suche
 #
-@MessageController.add_method({"de": "Suche", "en": "search"})
-def msg_cmd_search(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User):
-    if len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1].strip() != "":
-        query = message_body.split(None, 1)[1].strip()
+msg_cmd_search_command = MessageCommand([
+    MessageParam.init_user_id(required=False),
+    MessageParam("name", MessageParam.CONST_REGEX_TEXT, examples=["Jan", "Mafu", "Aiden"], required=True),
+], "Suche", "search", require_auth=True)
+@MessageController.add_method(msg_cmd_search_command)
+def msg_cmd_search(response: CommandMessageResponse):
+    message_controller = response.get_message_controller()
+    character_persistent_class = message_controller.character_persistent_class  # type: CharacterPersistentClass
+    user_id = response.get_value("user_id")
+    plain_user_id = user_id[1:].lower() if user_id is not None else None
 
-        auth = self.check_auth(user, message, self.config)
-        if auth is not True:
-            return [auth], user_command_status, user_command_status_data
+    chars = character_persistent_class.search_char(response.get_value("name"), user_id=plain_user_id)
 
-        chars = self.character_persistent_class.search_char(query)
+    if len(chars) == 0:
+        response.add_response_message(_("Für die Suchanfrage wurden keine Charaktere gefunden."))
+        response.set_suggestions(["Liste"])
+        return response
 
-        if len(chars) == 0:
-            response_messages.append(TextMessage(
-                to=message.from_user,
-                chat_id=message.chat_id,
-                body=_("Für die Suchanfrage wurden keine Charaktere gefunden."),
-                keyboards=[SuggestedResponseKeyboard(responses=[MessageController.generate_text_response("Liste")])]
-            ))
+    if len(chars) == 1:
+        response = message_controller.create_char_messages(chars[0], response)
+        return response
 
-        elif len(chars) == 1:
-            (char_resp_msg, user_command_status, user_command_status_data) = self.create_char_messages(chars[0], message, user_command_status, user_command_status_data, user)
-            response_messages += char_resp_msg
+    suggestions = []
+    for char in chars:
+        suggestions.append(message_controller.generate_text_user_char("Anzeigen", char['user_id'], char['char_id'], response.get_orig_message()))
+    suggestions.append("Liste")
 
-        else:
-            resp = []
-
-            for char in chars:
-                resp.append(self.generate_text_response_user_char("Anzeigen", char['user_id'], char['char_id'], message))
-
-            resp.append(MessageController.generate_text_response("Liste"))
-            response_messages.append(TextMessage(
-                to=message.from_user,
-                chat_id=message.chat_id,
-                body=_("Es wurden mehrere Charaktere gefunden, die deiner Suchanfrage entsprechen."),
-                keyboards=[SuggestedResponseKeyboard(responses=resp)]
-            ))
-
-
-
-    else:
-        response_messages.append(MessageController.get_error_response(message))
-    return response_messages, user_command_status, user_command_status_data
-
+    response.add_response_message(_("Es wurden mehrere Charaktere gefunden, die deiner Suchanfrage entsprechen."))
+    response.set_suggestions(suggestions)
+    return response
 
 #
 # Befehl Setze Befehl Tastaturen
 #
-@MessageController.add_method({"de": "Setze-Befehl-Tastaturen", "en": "set-command-keyboards", "_alts": ["set-cmd-keyboards"]})
-def msg_cmd_set_cmd_keyboards(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User):
-    if self.is_admin(message, self.config):
-        if len(message_body.split(None, 2)) == 3:
-            keyboards = message_body_c.split(None, 2)[2].strip()
-            static_command = message_body.split(None, 2)[1].strip()
-            static_message = self.character_persistent_class.get_static_message(static_command)
+msg_cmd_set_cmd_keyboards_command = MessageCommand([
+    MessageParam("command_name", MessageParam.CONST_REGEX_COMMAND, required=True, examples=["Hilfe", "Neuer-Command", "Lol"]),
+    MessageParam("actions", MessageParam.CONST_REGEX_TEXT, required=True, examples=["Hilfe, Liste", "Hilfe", "Hilfe, Wer-Bin-Ich"])
+], "Setze-Befehl-Tastaturen", "set-command-keyboards", ["set-cmd-keyboards"], require_admin=True)
+@MessageController.add_method(msg_cmd_set_cmd_keyboards_command)
+def msg_cmd_set_cmd_keyboards(response: CommandMessageResponse):
+    message_controller = response.get_message_controller()  # type: MessageController
+    character_persistent_class = message_controller.character_persistent_class  # type: CharacterPersistentClass
 
-            if static_message is None:
-                response_messages.append(TextMessage(
-                    to=message.from_user,
-                    chat_id=message.chat_id,
-                    body=_("Der Befehl '{command}' existiert nicht.").format(command=static_message['command']),
-                    keyboards=[SuggestedResponseKeyboard(responses=[MessageController.generate_text_response("Admin-Hilfe")])]
-                ))
+    actions = response.get_value("actions")
+    static_command = response.get_value("command_name")
+    static_message = character_persistent_class.get_static_message(static_command)
 
-            else:
-                static_command = static_message["command"]
-                static_message = self.character_persistent_class.set_static_message_keyboard(static_command, [x.strip() for x in keyboards.split(',')])
+    if static_message is None:
+        response.add_response_message(_("Der Befehl '{command}' existiert nicht.").format(command=static_command))
+        response.set_suggestions(["Admin-Hilfe"])
+        return response
 
-                example_alt_commands = "Alt-Befehl1, Alt-Befehl2, etc."
-                if static_message["alt_commands"] is not None:
-                    example_alt_commands = ", ".join(json.loads(static_message["alt_commands"]))
+    static_message = character_persistent_class.set_static_message_keyboard(static_message["command"], [x.strip() for x in actions.split(',')])
+    message_controller.update_static_commands()
 
-                response_messages.append(TextMessage(
-                    to=message.from_user,
-                    chat_id=message.chat_id,
-                    body=_("Du hast erfolgreich die Tastaturen für den statischen Befehl '{command}' aktualisiert.\n" +
-                           "Du kannst auch alternative Befehle (wie z.B. 'h' für Hilfe oder 'rules' für Regeln) hinzufügen. Dies geht mit dem Befehl:\n\n" +
-                           "@{bot_username} {set_cmd_alt_cmd_command} {command} {curr_alt_cmd}").format(
-                        command=static_message["command"],
-                        bot_username=self.bot_username,
-                        curr_alt_cmd=example_alt_commands,
-                        set_cmd_alt_cmd_command=MessageController.get_command_text("Setze-Befehl-Alternative-Befehle")
-                    ),
-                    keyboards=[SuggestedResponseKeyboard(
-                        responses=[MessageController.generate_text_response(static_message['command']), MessageController.generate_text_response("Admin-Hilfe")])]
-                ))
-        else:
-            response_messages.append(MessageController.get_error_response(message, "Admin-Hilfe"))
-    else:
-        response_messages.append(TextMessage(
-            to=message.from_user,
-            chat_id=message.chat_id,
-            body="Du kannst keine statischen Antworten setzen."
-        ))
-    return response_messages, user_command_status, user_command_status_data
+    example_alt_commands = "Alt-Befehl1, Alt-Befehl2, etc."
+    if static_message["alt_commands"] is not None:
+        example_alt_commands = ", ".join(json.loads(static_message["alt_commands"]))
+
+    response.add_response_message(_("Du hast erfolgreich die Tastaturen für den statischen Befehl '{command}' aktualisiert.\n" +
+               "Du kannst auch alternative Befehle (wie z.B. 'h' für Hilfe oder 'rules' für Regeln) hinzufügen. Dies geht mit dem Befehl:\n\n" +
+               "@{bot_username} {set_cmd_alt_cmd_command} {command} {curr_alt_cmd}").format(
+            command=static_message["command"],
+            bot_username=message_controller.bot_username,
+            curr_alt_cmd=example_alt_commands,
+            set_cmd_alt_cmd_command=MessageController.get_command_text("Setze-Befehl-Alternative-Befehle")
+    ))
+
+    response.set_suggestions([static_message["command"], "Admin-Hilfe"])
+    return response
+
 
 
 #
 # Befehl Setze Befehl Alternative Befehle
 #
-@MessageController.add_method({"de": "Setze-Befehl-alternative-Befehle", "en": "set-command-alternative-commands", "_alts": ["set-cmd-alt-cmd"]})
-def msg_cmd_set_cmd_alt_cmd(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User):
-    if self.is_admin(message, self.config):
-        if len(message_body.split(None, 2)) == 3:
-            alt_commands = message_body_c.split(None, 2)[2].strip()
-            static_command = message_body.split(None, 2)[1].strip()
-            static_message = self.character_persistent_class.get_static_message(static_command)
+msg_cmd_set_cmd_alt_cmd_command = MessageCommand([
+    MessageParam("command_name", MessageParam.CONST_REGEX_COMMAND, required=True, examples=["Hilfe", "Neuer-Command", "Lol"]),
+    MessageParam("alt_commands", MessageParam.CONST_REGEX_TEXT, required=True, examples=["Hilfe, Liste", "Hilfe", "Hilfe, Wer-Bin-Ich"])
+], "Setze-Befehl-alternative-Befehle", "set-command-alternative-commands", ["set-cmd-alt-cmd"], require_admin=True)
+@MessageController.add_method(msg_cmd_set_cmd_alt_cmd_command)
+def msg_cmd_set_cmd_alt_cmd(response: CommandMessageResponse):
+    message_controller = response.get_message_controller()  # type: MessageController
+    character_persistent_class = message_controller.character_persistent_class  # type: CharacterPersistentClass
 
-            if static_message is None:
-                response_messages.append(TextMessage(
-                    to=message.from_user,
-                    chat_id=message.chat_id,
-                    body=_("Der Befehl '{command}' existiert nicht.").format(command=static_message['command']),
-                    keyboards=[SuggestedResponseKeyboard(responses=[MessageController.generate_text_response("Admin-Hilfe")])]
-                ))
+    alt_commands = response.get_value("alt_commands")
+    static_command = response.get_value("command_name")
+    static_message = character_persistent_class.get_static_message(static_command)
 
-            else:
-                static_command = static_message["command"]
-                static_message = self.character_persistent_class.set_static_message_alt_commands(static_command, [x.strip() for x in alt_commands.split(',')])
+    if static_message is None:
+        response.add_response_message(_("Der Befehl '{command}' existiert nicht.").format(command=static_command))
+        response.set_suggestions(["Admin-Hilfe"])
+        return response
 
-                example_keyboards = "Hilfe, Liste"
-                if static_message["response_keyboards"] is not None:
-                    example_keyboards = ", ".join(json.loads(static_message["response_keyboards"]))
+    static_message = character_persistent_class.set_static_message_alt_commands(static_message["command"], [x.strip() for x in alt_commands.split(',')])
+    message_controller.update_static_commands()
 
-                response_messages.append(TextMessage(
-                    to=message.from_user,
-                    chat_id=message.chat_id,
-                    body=_("Du hast erfolgreich die alternativen Befehle für den Befehl '{command}' aktualisiert.\n" +
-                           "Du kannst jetzt noch mit dem folgenden Befehl die Antwort-Tastaturen setzen (Komma-getrennt):\n\n" +
-                           "@{bot_username} {set_cmd_keyboards_command} {command} {curr_keyboards}").format(
-                        command=static_message["command"],
-                        bot_username=self.bot_username,
-                        curr_keyboards=example_keyboards,
-                        set_cmd_keyboards_command=MessageController.get_command_text("Setze-Befehl-Tastaturen"),
-                    ),
-                    keyboards=[SuggestedResponseKeyboard(
-                        responses=[MessageController.generate_text_response(static_message['command']), MessageController.generate_text_response("Admin-Hilfe")])]
-                ))
-        else:
-            response_messages.append(MessageController.get_error_response(message, "Admin-Hilfe"))
-    else:
-        response_messages.append(TextMessage(
-            to=message.from_user,
-            chat_id=message.chat_id,
-            body=_("Du kannst keine statischen Antworten setzen.")
-        ))
-    return response_messages, user_command_status, user_command_status_data
+    example_keyboards = "Hilfe, Liste"
+    if static_message["response_keyboards"] is not None:
+        example_keyboards = ", ".join(json.loads(static_message["response_keyboards"]))
+
+    response.add_response_message(_("Du hast erfolgreich die alternativen Befehle für den Befehl '{command}' aktualisiert.\n" +
+               "Du kannst jetzt noch mit dem folgenden Befehl die Antwort-Tastaturen setzen (Komma-getrennt):\n\n" +
+               "@{bot_username} {set_cmd_keyboards_command} {command} {curr_keyboards}").format(
+            command=static_message["command"],
+            bot_username=message_controller.bot_username,
+            curr_keyboards=example_keyboards,
+            set_cmd_keyboards_command=MessageController.get_command_text("Setze-Befehl-Tastaturen"),
+    ))
+
+    response.set_suggestions([static_message["command"], "Admin-Hilfe"])
+    return response
 
 
 #
 # Befehl Setze Antwort
 #
-@MessageController.add_method({"de": "Setze-Befehl", "en": "set-command", "_alts": ["set-cmd"]})
-def msg_cmd_set_command(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User):
-    if self.is_admin(message, self.config):
-        if len(message_body.split(None, 2)) == 3:
-            text = message_body_c.split(None, 2)[2].strip()
-            static_command = message_body.split(None, 2)[1].strip()
-            static_message = self.character_persistent_class.get_static_message(static_command)
+msg_cmd_set_command_command = MessageCommand([
+    MessageParam("command_name", MessageParam.CONST_REGEX_COMMAND, required=True, examples=["Hilfe", "Neuer-Command", "Lol"]),
+    MessageParam("text", MessageParam.CONST_REGEX_TEXT, required=True, examples=["Antworttext"])
+], "Setze-Befehl", "set-command", ["set-cmd"], require_admin=True)
+@MessageController.add_method(msg_cmd_set_command_command)
+def msg_cmd_set_command(response: CommandMessageResponse):
+    message_controller = response.get_message_controller()  # type: MessageController
+    character_persistent_class = message_controller.character_persistent_class  # type: CharacterPersistentClass
 
-            if static_message is not None:
-                static_command = static_message["command"]
+    text = response.get_value("text")
+    static_command = response.get_value("command_name")
+    static_message = character_persistent_class.get_static_message(static_command)
 
-            static_message = self.character_persistent_class.set_static_message(static_command, text)
+    if static_message is not None:
+        static_command = static_message["command"]
 
-            example_keyboards = "Hilfe, Liste"
-            if static_message["response_keyboards"] is not None:
-                example_keyboards = ", ".join(json.loads(static_message["response_keyboards"]))
+    static_message = character_persistent_class.set_static_message(static_command, text)
+    message_controller.update_static_commands()
 
-            example_alt_commands = "Alt-Befehl1, Alt-Befehl2, etc."
-            if static_message["alt_commands"] is not None:
-                example_alt_commands = ", ".join(json.loads(static_message["alt_commands"]))
+    example_keyboards = "Hilfe, Liste"
+    if static_message["response_keyboards"] is not None:
+        example_keyboards = ", ".join(json.loads(static_message["response_keyboards"]))
 
-            response_messages.append(TextMessage(
-                to=message.from_user,
-                chat_id=message.chat_id,
-                body=_("Du hast erfolgreich die statische Antwort auf den Befehl '{command}' aktualisiert.\n" +
-                       "Du kannst jetzt noch mit dem folgenden Befehl die Antwort-Tastaturen setzen (Komma-getrennt):\n\n" +
-                       "@{bot_username} {set_cmd_keyboards_command} {command} {curr_keyboards}\n\n\n" +
-                       "Du kannst auch alternative Befehle (wie z.B. 'h' für Hilfe oder 'rules' für Regeln) hinzufügen. Dies geht mit dem Befehl:\n\n" +
-                       "@{bot_username} {set_cmd_alt_cmd_command} {command} {curr_alt_cmd}"
-                       ).format(
-                    command=static_message["command"],
-                    bot_username=self.bot_username,
-                    curr_keyboards=example_keyboards,
-                    curr_alt_cmd=example_alt_commands,
-                    set_cmd_keyboards_command=MessageController.get_command_text("Setze-Befehl-Tastaturen"),
-                    set_cmd_alt_cmd_command=MessageController.get_command_text("Setze-Befehl-Alternative-Befehle")
-                ),
-                keyboards=[SuggestedResponseKeyboard(
-                    responses=[MessageController.generate_text_response(static_message["command"]), MessageController.generate_text_response("Admin-Hilfe")])]
-            ))
-        else:
-            response_messages.append(MessageController.get_error_response(message, "Admin-Hilfe"))
-    else:
-        response_messages.append(TextMessage(
-            to=message.from_user,
-            chat_id=message.chat_id,
-            body=_("Du kannst keine statischen Antworten setzen.")
-        ))
-    return response_messages, user_command_status, user_command_status_data
+    example_alt_commands = "Alt-Befehl1, Alt-Befehl2, etc."
+    if static_message["alt_commands"] is not None:
+        example_alt_commands = ", ".join(json.loads(static_message["alt_commands"]))
+
+    response.add_response_message(_("Du hast erfolgreich die statische Antwort auf den Befehl '{command}' aktualisiert.\n" +
+               "Du kannst jetzt noch mit dem folgenden Befehl die Antwort-Tastaturen setzen (Komma-getrennt):\n\n" +
+               "@{bot_username} {set_cmd_keyboards_command} {command} {curr_keyboards}\n\n\n" +
+               "Du kannst auch alternative Befehle (wie z.B. 'h' für Hilfe oder 'rules' für Regeln) hinzufügen. Dies geht mit dem Befehl:\n\n" +
+               "@{bot_username} {set_cmd_alt_cmd_command} {command} {curr_alt_cmd}"
+               ).format(
+            command=static_message["command"],
+            bot_username=message_controller.bot_username,
+            curr_keyboards=example_keyboards,
+            curr_alt_cmd=example_alt_commands,
+            set_cmd_keyboards_command=MessageController.get_command_text("Setze-Befehl-Tastaturen"),
+            set_cmd_alt_cmd_command=MessageController.get_command_text("Setze-Befehl-Alternative-Befehle")
+    ))
+
+    response.set_suggestions([static_message["command"], "Admin-Hilfe"])
+    return response
 
 
 #
 # Befehl Auth
 #
-@MessageController.add_method({"de": "Berechtigen", "en": "auth", "_alts": ["authorize", "authorise"]})
-def msg_cmd_auth(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User):
-    if len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1][0] == "@":
-        selected_user = message_body.split(None, 1)[1][1:].strip()
-        auth = self.check_auth(user, message, self.config)
-        if auth is not True:
-            return [auth], user_command_status, user_command_status_data
+msg_cmd_auth_command = MessageCommand([
+    MessageParam.init_user_id(required=True),
+], "Berechtigen", "auth", ["authorize", "authorise"], require_auth=True)
+@MessageController.add_method(msg_cmd_auth_command)
+def msg_cmd_auth(response: CommandMessageResponse):
+    message_controller = response.get_message_controller()  # type: MessageController
+    character_persistent_class = message_controller.character_persistent_class  # type: CharacterPersistentClass
+    plain_user_id = response.get_value("user_id")[1:]
 
-        to_auth_user_db = self.character_persistent_class.get_user(selected_user)
-        to_auth_user = User.init(to_auth_user_db) if to_auth_user_db is not None else User.init_new_user(selected_user, self.bot_username)
-        to_auth_user.auth(user)
-        self.character_persistent_class.update_user(to_auth_user, as_request=False)
+    to_auth_user_db = character_persistent_class.get_user(plain_user_id)
+    to_auth_user = User.init(to_auth_user_db) if to_auth_user_db is not None else User.init_new_user(plain_user_id, message_controller.bot_username)
+    to_auth_user.auth(response.get_user())
+    character_persistent_class.update_user(to_auth_user, as_request=False)
 
-        response_messages.append(TextMessage(
-            to=message.from_user,
-            chat_id=message.chat_id,
-            body=_("Du hast erfolgreich den Nutzer @{user_id} berechtigt.").format(user_id=selected_user)
-        ))
-
-    else:
-        response_messages.append(MessageController.get_error_response(message))
-    return response_messages, user_command_status, user_command_status_data
+    response.add_response_message(_("Du hast erfolgreich den Nutzer @{user_id} berechtigt.").format(user_id=plain_user_id))
+    return response
 
 
 #
 # Befehl UnAuth
 #
-@MessageController.add_method({"de": "Entmachten", "en": "unauth", "_alts": ["unauthorize", "unauthorise"]})
-def msg_cmd_unauth(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User):
-    if len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1][0] == "@":
-        selected_user = message_body.split(None, 1)[1][1:].strip()
+msg_cmd_unauth_command = MessageCommand([
+    MessageParam.init_user_id(required=True),
+], "Entmachten", "unauth", ["unauthorize", "unauthorise"], require_admin=True)
+@MessageController.add_method(msg_cmd_unauth_command)
+def msg_cmd_unauth(response: CommandMessageResponse):
+    message_controller = response.get_message_controller()  # type: MessageController
+    character_persistent_class = message_controller.character_persistent_class  # type: CharacterPersistentClass
+    plain_user_id = response.get_value("user_id")[1:]
 
-        if MessageController.is_admin(message, self.config) is False:
-            response_messages.append(TextMessage(
-                to=message.from_user,
-                chat_id=message.chat_id,
-                body=_("Du bist nicht berechtigt diesen Befehl auszuführen!\nNur Admins können Nutzern Rechte entziehen.")
-            ))
-            return response_messages, user_command_status, user_command_status_data
+    to_auth_user_db = character_persistent_class.get_user(plain_user_id)
+    to_auth_user = User.init(to_auth_user_db) if to_auth_user_db is not None else User.init_new_user(plain_user_id, message_controller.bot_username)
+    to_auth_user.unauth()
+    character_persistent_class.update_user(to_auth_user, as_request=False)
+
+    response.add_response_message(_("Du hast erfolgreich den Nutzer @{user_id} entmächtigt.").format(user_id=plain_user_id))
+    return response
 
 
-        to_auth_user_db = self.character_persistent_class.get_user(selected_user)
-        to_auth_user = User.init(to_auth_user_db) if to_auth_user_db is not None else User.init_new_user(selected_user, self.bot_username)
-        to_auth_user.unauth()
-        self.character_persistent_class.update_user(to_auth_user, as_request=False)
+#
+# Befehl Admin-Auth
+#
+msg_cmd_auth_admin_command = MessageCommand([
+    MessageParam.init_user_id(required=True),
+], "Admin-geben", "auth-admin", ["authorize-admin", "authorise-admin"], require_admin=True)
+@MessageController.add_method(msg_cmd_auth_admin_command)
+def msg_cmd_auth_admin(response: CommandMessageResponse):
+    message_controller = response.get_message_controller()  # type: MessageController
+    character_persistent_class = message_controller.character_persistent_class  # type: CharacterPersistentClass
+    plain_user_id = response.get_value("user_id")[1:]
 
-        response_messages.append(TextMessage(
-            to=message.from_user,
-            chat_id=message.chat_id,
-            body=_("Du hast erfolgreich den Nutzer @{user_id} entmächtigt.").format(user_id=selected_user)
-        ))
+    to_auth_user_db = character_persistent_class.get_user(plain_user_id)
+    to_auth_user = User.init(to_auth_user_db) if to_auth_user_db is not None else User.init_new_user(plain_user_id, message_controller.bot_username)
+    to_auth_user.set_admin(True)
+    character_persistent_class.update_user(to_auth_user, as_request=False)
 
-    else:
-        response_messages.append(MessageController.get_error_response(message))
-    return response_messages, user_command_status, user_command_status_data
+    response.add_response_message(_("Der Nutzer @{user_id} hat nun Admin-Berechtigungen.").format(user_id=plain_user_id))
+    return response
+
+
+#
+# Befehl UnAuth
+#
+msg_cmd_unauth_admin_command = MessageCommand([
+    MessageParam.init_user_id(required=True),
+], "Admin-nehmen", "unauth-admin", ["unauthorize-admin", "unauthorise-admin"], require_admin=True)
+@MessageController.add_method(msg_cmd_unauth_admin_command)
+def msg_admin_cmd_unauth(response: CommandMessageResponse):
+    message_controller = response.get_message_controller()  # type: MessageController
+    character_persistent_class = message_controller.character_persistent_class  # type: CharacterPersistentClass
+    plain_user_id = response.get_value("user_id")[1:]
+
+    to_auth_user_db = character_persistent_class.get_user(plain_user_id)
+    to_auth_user = User.init(to_auth_user_db) if to_auth_user_db is not None else User.init_new_user(plain_user_id, message_controller.bot_username)
+    to_auth_user.set_admin(False)
+    character_persistent_class.update_user(to_auth_user, as_request=False)
+
+    response.add_response_message(_("Der Nutzer @{user_id} kann keine Admin-Befehle mehr ausführen.").format(user_id=plain_user_id))
+    return response
+
+
+#
+# Befehl scan-active
+#
+scan_active_command = MessageCommand([
+], "Scanne-Active", "scan-active", [], require_admin=True)
+@MessageController.add_method(scan_active_command)
+def scan_active(response: CommandMessageResponse):
+    message_controller = response.get_message_controller()  # type: MessageController
+
+    if response.request_is_private_group() is False:
+        response.add_response_message(_("Dieser Befehl kann nur in einer privaten Gruppe ausgeführt werden!"))
+        return response
+
+    character_persistent_class = message_controller.character_persistent_class  # type: CharacterPersistentClass
+    users_with_chars_row = character_persistent_class.list_all_users_with_chars(list_all=True)
+    group_users = set(response.get_all_group_users())
+    users_with_chars_in_group = set() # werden (wieder) aktiviert
+    users_with_chars_not_in_group = set() # werden deaktiviert, wenn nicht neu
+    aliased_chars = set()
+
+    for user_row in users_with_chars_row:
+        if user_row["user_id"] in group_users or (user_row["created"] + 3*60*60*24 >= int(time.time()) and message_controller.is_aliased_user(user_row["user_id"])):
+            users_with_chars_in_group.add(user_row["user_id"])
+        elif message_controller.is_aliased_user(user_row["user_id"]):
+            aliased_chars.add(user_row["user_id"])
+        else:
+            users_with_chars_not_in_group.add(user_row["user_id"])
+
+    users_without_chars_in_group = group_users - users_with_chars_in_group
+
+    response.add_response_message(_(
+        "Steckbriefe wurden gescannt:\n\n"
+        "{cnt_users_deactivate} mit Steckbriefen sind nicht mehr in der Gruppe und können deaktiviert werden.\n"
+        "{cnt_users_aliased} Personen haben dem Steckbrief nicht ihre Benutzer-Id hinterlegt.\n"
+        "Folgende Nutzer sind in der Gruppe, aber haben noch keinen Steckbrief:\n"
+        "{users_without_chars_list}"
+    ).format(
+        cnt_users_deactivate=len(users_with_chars_not_in_group),
+        cnt_users_aliased=len(aliased_chars),
+        users_without_chars_list="\n".join(["@"+user_id for user_id in users_without_chars_in_group])
+    ))
+
+    return response
+
 
 #
 # Befehl i-am
 #
 iam_command = MessageCommand([
-    MessageParam.init_user_id(required=True),
+    MessageParam.init_user_id(),
     MessageParam.init_char_id(),
 ], "Ich-Bin", "i-am", ["iam"])
 @MessageController.add_method(iam_command)
-def quest_accept(response: CommandMessageResponse):
+def i_am(response: CommandMessageResponse):
     message_controller = response.get_message_controller()  # type: MessageController
     params = response.get_params()
     user = response.get_user() # type: User
@@ -1744,8 +1926,10 @@ def quest_accept(response: CommandMessageResponse):
 
     user.set_linked_chars(plain_user_id, char_id)
 
-    response.add_response_message(_("Alles klar! "
-                                    "Alle charakter-spezifischen Befehle sind ab jetzt für dich standardmäßig auf @{user_id} mit der Charakter-Id {char_id} gesetzt.").format(
+    response.add_response_message(_("Alles klar!\n"
+                                    "Alle charakter-spezifischen Befehle sind ab jetzt für dich standardmäßig auf @{user_id} mit der Charakter-Id {char_id} gesetzt.\n\n"
+                                    "Bitte beachte: Möglicherweise musst du den Befehl erneut ausführen, wenn du deinen Namen oder Profilbild änderst.\n"
+                                    "Durch die Änderung wird dir durch Kik neue ID zugewiesen.").format(
         user_id=plain_user_id,
         char_id=char_id
     ))
@@ -1758,14 +1942,25 @@ def quest_accept(response: CommandMessageResponse):
 iam_command = MessageCommand([
 ], "Wer-bin-ich", "who-am-i", ["wer-bin-ich?", "whoami", "who-am-i?"])
 @MessageController.add_method(iam_command)
-def quest_accept(response: CommandMessageResponse):
+def who_am_i(response: CommandMessageResponse):
+    message_controller = response.get_message_controller()
     user = response.get_user() # type: User
 
     if user["is_user_id"] is None:
-        response.add_response_message(_("Du hast derzeit keinen Benutzernamen und Charakter-Id für charakter-spezifischen Befehle gesetzt."))
+        response.add_response_message(_(
+            "Du führst derzeit alle Befehle als du selbst aus. Kik hat dir für diese Gruppe folgende Benutzer-ID zugewiesen:\n\n"
+            "@{user_id}\n\n"
+            "Wenn du Befehle mit einer anderen Benutzer-ID und std. Charakter ausführen möchtest, dann führe hier folgenden Befehl aus:"
+        ).format(
+            user_id=user.get_user_id()
+        ))
+        response.add_response_message(_("@{bot_username} {iam_command}").format(
+            bot_username=message_controller.bot_username,
+            iam_command=message_controller.get_command("i-am").get_example({"user_id": _("@deine.id"), "char_id": "1", "command": None})
+        ))
         return response
 
-    response.add_response_message(_("Alle charakter-spezifischen Befehle sind für standardmäßig auf @{user_id} mit der Charakter-Id {char_id} gesetzt.").format(
+    response.add_response_message(_("Alle Befehle sind für dich standardmäßig auf @{user_id} mit der Charakter-Id {char_id} gesetzt.").format(
         user_id=user["is_user_id"],
         char_id=user["is_char_id"]
     ))
@@ -1783,17 +1978,62 @@ def commands(response: CommandMessageResponse):
     message_controller = response.get_message_controller()
 
     show_commands = []
+    suggestions = []
     for cmd_id, obj in enumerate(message_controller.methods):
         cmds = obj["cmds"] # type: MessageCommand
         if isinstance(cmds, MessageCommand) and cmds.is_admin_only() is False and cmds.is_hidden() is False:
-            show_commands.append(cmds.get_help_desc())
+            show_commands.append(cmds)
+            suggestions.append(MessageController.get_command("Befehl").get_example({"command_name":cmds.get_command_loc(), "command": None}))
 
-
+    symbols = {
+        (False, False): u"\U000027A1\U0000FE0F",
+        (True, False): u"\U0001F512",
+        (False, True): u"\U0001F232",
+        (True, True): u"\U0001F232"
+    }
     response.add_response_message(_("Folgende weitere Befehle sind möglich:\n\n"
                                     "{more_commands}\n\n"
                                     "Für weitere Informationen zu einem Befehl schreibe").format(
-        more_commands="\n".join([u"\U000027A1\U0000FE0F " + cmd for cmd in show_commands])
+        more_commands="\n".join([u"{symbol} {help_desc}".format(
+            symbol=symbols[(cmd.is_auth_only(), cmd.is_admin_only())],
+            help_desc=cmd.get_help_desc()
+        ) for cmd in show_commands])
     ))
+    response.set_suggestions(suggestions)
+    return response
+
+#
+# Befehl Admin Befehle
+#
+admin_commands_command = MessageCommand([
+], "Admin-Befehle", "admin-commands", require_admin=True)
+@MessageController.add_method(admin_commands_command)
+def admin_commands(response: CommandMessageResponse):
+    message_controller = response.get_message_controller()
+
+    show_commands = []
+    suggestions = []
+    for cmd_id, obj in enumerate(message_controller.methods):
+        cmds = obj["cmds"] # type: MessageCommand
+        if isinstance(cmds, MessageCommand) and cmds.is_admin_only() is True and cmds.is_hidden() is False:
+            show_commands.append(cmds)
+            suggestions.append(MessageController.get_command("Befehl").get_example({"command_name": cmds.get_command_loc(), "command": None}))
+
+    symbols = {
+        (False, False): u"\U000027A1\U0000FE0F",
+        (True, False): u"\U0001F512",
+        (False, True): u"\U0001F232",
+        (True, True): u"\U0001F232"
+    }
+    response.add_response_message(_("Folgende weitere Admin Befehle sind möglich:\n\n"
+                                    "{more_commands}\n\n"
+                                    "Für weitere Informationen zu einem Befehl schreibe").format(
+        more_commands="\n".join([u"{symbol} {help_desc}".format(
+            symbol=symbols[(cmd.is_auth_only(), cmd.is_admin_only())],
+            help_desc=cmd.get_help_desc()
+        ) for cmd in show_commands])
+    ))
+    response.set_suggestions(suggestions)
     return response
 
 
@@ -1822,6 +2062,14 @@ def command_info(response: CommandMessageResponse):
         response.set_suggestions(["Hilfe", "Befehle"])
         return response
 
+    if desc_command.is_admin_only() is True and message_controller.is_admin(response.get_orig_message()) is False:
+        # ist ein Admin Befehl
+        response.add_response_message(_("Der Befehl \"{command}\" existiert nicht.").format(
+            command=response.get_value("command_name")
+        ))
+        response.set_suggestions(["Hilfe", "Befehle"])
+        return response
+
     response.add_response_message(_("Die Struktur des Befehls sieht wie folgt aus:\n"
                                     "{command_structure}\n\n\n"
                                     "{examples_5}\n\n\n"
@@ -1838,74 +2086,59 @@ def command_info(response: CommandMessageResponse):
 #
 # Befehl Liste
 #
-@MessageController.add_method({"de": "Liste", "en": "list"})
-def msg_cmd_list(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User):
-    if len(message_body.split(None, 1)) == 2 and message_body.split(None, 1)[1].isdigit():
-        page = int(message_body.split(None, 1)[1])
-    else:
-        page = 1
-
-    auth = self.check_auth(user, message, self.config)
-    if auth is not True:
-        return [auth], user_command_status, user_command_status_data
-
+msg_cmd_list_command = MessageCommand([
+    MessageParam("page", MessageParam.CONST_REGEX_NUM, examples=range(1,4), default_value=1)
+], "Liste", "list", require_auth=True)
+@MessageController.add_method(msg_cmd_list_command)
+def msg_cmd_list(response: CommandMessageResponse):
+    message_controller = response.get_message_controller()
+    character_persistent_class = message_controller.character_persistent_class  # type: CharacterPersistentClass
+    page = int(response.get_value("page"))
     limit = 15
-    chars = self.character_persistent_class.list_all_users_with_chars(page)
+
+    chars = character_persistent_class.list_all_users_with_chars(page)
     user_ids = [item['user_id'] for item in chars[:limit]]
 
-    body = _("Liste aller Nutzer mit Charakteren:\n--- Seite {page} ---\n").format(page=page)
+    bodys = [_("Liste aller Nutzer mit Charakteren:\n--- Seite {page} ---\n").format(page=page)]
     number = (page - 1) * limit + 1
     for char in chars[:limit]:
-        b = _("{consecutive_number}.: {user_name}\n" +
+        bodys.append(_("{consecutive_number}.: {user_name}\n" +
               "Nutzername: @{user_id}\n" +
               "Anz. Charaktere: {chars_cnt}\n" +
               "letzte Änderung: {last_change:%d.%m.%Y}"
               ).format(
             consecutive_number=number,
-            user_name=self.get_name(char['user_id']),
+            user_name=message_controller.get_name(char['user_id']),
             user_id=char['user_id'],
             chars_cnt=char['chars_cnt'],
             last_change=datetime.datetime.fromtimestamp(char['created'])
-        )
+        ))
 
         number += 1
 
-        if len(body) + len(b) + 4 < 1500:
-            body += "\n\n" + b
-        else:
-            response_messages.append(TextMessage(
-                to=message.from_user,
-                chat_id=message.chat_id,
-                body=body
-            ))
-            body = b
-
-    responses = list()
+    suggestions = list()
     dyn_message_data = {}
     if page != 1:
         dyn_message_data['left'] = "Liste {}".format(page - 1)
-        responses.append(MessageController.generate_text_response(u"\U00002B05\U0000FE0F"))
+        suggestions.append(u"\U00002B05\U0000FE0F")
     if len(chars) > limit:
         dyn_message_data['right'] = "Liste {}".format(page + 1)
-        responses.append(MessageController.generate_text_response(u"\U000027A1\U0000FE0F"))
+        suggestions.append(u"\U000027A1\U0000FE0F")
 
     if dyn_message_data != {}:
-        user_command_status = CharacterPersistentClass.STATUS_DYN_MESSAGES
-        user_command_status_data = dyn_message_data
-        body += _("\n\n(Weitere Seiten: {icon_left} und {icon_right} zum navigieren)").format(
+        response.user_command_status = CharacterPersistentClass.STATUS_DYN_MESSAGES
+        response.user_command_status_data = dyn_message_data
+        bodys.append(("\n\n(Weitere Seiten: {icon_left} und {icon_right} zum navigieren)").format(
             icon_left=u"\U00002B05\U0000FE0F",
             icon_right=u"\U000027A1\U0000FE0F"
-        )
+        ))
 
-    responses += [MessageController.generate_text_response("Anzeigen @{}".format(x)) for x in user_ids]
 
-    response_messages.append(TextMessage(
-        to=message.from_user,
-        chat_id=message.chat_id,
-        body=body,
-        keyboards=[SuggestedResponseKeyboard(responses=responses)]
-    ))
-    return response_messages, user_command_status, user_command_status_data
+    suggestions += [MessageController.generate_text_user_char("Anzeigen", user_id, None, response.get_orig_message(), force_username=True) for user_id in user_ids]
+    response.set_suggestions(suggestions)
+    response.add_response_messages(MessageController.split_messages("\n\n".join(bodys), split_char="\n\n"))
+
+    return response
 
 
 #
@@ -1914,7 +2147,6 @@ def msg_cmd_list(self, message, message_body, message_body_c, response_messages,
 template_command = MessageCommand([
     MessageParam.init_user_id(),
 ], "Vorlage", "template", ["Charaktervorlage", "boilerplate", "draft", "Steckbriefvorlage", "Stecki"])
-
 @MessageController.add_method(template_command)
 def msg_cmd_template(response: CommandMessageResponse):
     message_controller = response.get_message_controller()
@@ -1949,12 +2181,12 @@ def msg_cmd_template(response: CommandMessageResponse):
 #
 # Befehl Weitere Beispiele
 #
-@MessageController.add_method({"de": "Weitere-Beispiele", "en": "more-examples"})
-def msg_cmd_more_examples(self, message, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User):
-    response_messages.append(TextMessage(
-        to=message.from_user,
-        chat_id=message.chat_id,
-        body=_(
+msg_cmd_more_examples_command = MessageCommand([
+], "Weitere-Beispiele", "more-examples")
+@MessageController.add_method(msg_cmd_more_examples_command)
+def msg_cmd_more_examples(response: CommandMessageResponse):
+    message_controller = response.get_message_controller()
+    response.add_response_message(_(
             "Weitere Beispiele\n"
             "Alle Beispiele sind in einzelnen Abschnitten mittels ----- getrennt.\n\n"
             "------\n"
@@ -1986,155 +2218,146 @@ def msg_cmd_more_examples(self, message, message_body, message_body_c, response_
             " mit keinem Leerzeichen oder sonstigen Zeichen beginnen, da ansonsten die Nachricht nicht an den Bot weitergeleitet wird.\n"
             "Wenn du bei dieser Nachricht auf Antworten tippst, werden dir unten {number} der oben gezeigten Beispiele als Vorauswahl angeboten"
         ).format(
-            bot_username=self.bot_username,
-            user_id=self.get_from_userid(message),
-            show_command=MessageController.get_command_text("Anzeigen"),
-            delete_command=MessageController.get_command_text("Löschen"),
-            list_command=MessageController.get_command_text("Liste"),
-            help_command=MessageController.get_command_text("Hilfe"),
-            dice_command=MessageController.get_command_text("Würfeln"),
-            add_command=MessageController.get_command_text("Hinzufügen"),
-            change_command=MessageController.get_command_text("Ändern"),
+            bot_username=message_controller.bot_username,
+            user_id=response.get_user().get_user_id(),
+            show_command=message_controller.get_command_text("Anzeigen"),
+            delete_command=message_controller.get_command_text("Löschen"),
+            list_command=message_controller.get_command_text("Liste"),
+            help_command=message_controller.get_command_text("Hilfe"),
+            dice_command=message_controller.get_command_text("Würfeln"),
+            add_command=message_controller.get_command_text("Hinzufügen"),
+            change_command=message_controller.get_command_text("Ändern"),
             number=7,
-            admin_user=self.config.get("Admins", "admin1").split(',')[0].strip()
-        ),
-        keyboards=[SuggestedResponseKeyboard(responses=[
-            MessageController.generate_text_response("Hilfe"),
-            MessageController.generate_text_response("Hinzufügen {}".format(_("Neuer Charakter"))),
-            MessageController.generate_text_response("Anzeigen @{}".format(self.config.get("Admins", "admin1").split(',')[0].strip())),
-            MessageController.generate_text_response("Anzeigen"),
-            MessageController.generate_text_response("Liste"),
-            MessageController.generate_text_response("Hilfe"),
-            MessageController.generate_text_response("Würfeln 8"),
-            MessageController.generate_text_response("Würfeln {}".format(_("Rot, Grün, Blau, Schwarz, Weiß")))
-        ])]
+            admin_user=message_controller.config.get("Admins", "admin1").split(',')[0].strip()
     ))
-    return response_messages, user_command_status, user_command_status_data
+    response.set_suggestions([
+        "Hilfe",
+        #TODO: entkommentieren message_controller.get_command("Hinzufügen").get_example({"command": None, "text": _("Neuer Charakter")}),
+        message_controller.generate_text_user_char("Anzeigen", message_controller.config.get("Admins", "admin1").split(',')[0].strip(), None, response.get_orig_message()),
+        "Anzeigen",
+        "Liste",
+        message_controller.get_command("Würfeln").get_example({"command": None, "term": "8"}),
+        message_controller.get_command("Würfeln").get_example({"command": None, "term": _("Rot, Grün, Blau, Schwarz, Weiß")}),
+    ])
+    return response
 
 
 #
 # Befehl Würfeln
 #
-@MessageController.add_method({"de": "Würfeln", "en": "dice", "_alts": ["Würfel", u"\U0001F3B2"]})
-@MessageController.add_method({"de": "Münze", "en": "coin"})
-def msg_cmd_roll(self, message: TextMessage, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User):
-    bracket = None
-    accepted_brackets = {
-        'open': ["(", "[", "*"],
-        'close': [")", "]", "*"],
-    }
-    if message_body[-1:] in accepted_brackets['close']:
-        bracket = accepted_brackets['close'].index(message_body[-1:])
-        message_body = message_body[:-1].strip()
-        message_body_c = message_body_c[:-1].strip()
+dice_command = MessageCommand([
+    MessageParam("term", MessageParam.CONST_REGEX_TEXT, examples=["3", "4", "12", "24", "Rot, Grün, Blau", "10D6", "20D12", "20D12 + 10D8", "100D6"])
+], "Würfeln", "dice", ["Würfel", u"\U0001F3B2", "roll"])
+coin_command = MessageCommand([], "Münze", "coin")
+@MessageController.add_method(dice_command)
+@MessageController.add_method(coin_command)
+def msg_cmd_roll(response: CommandMessageResponse):
+    message_controller = response.get_message_controller()
+    message_command = response.get_command()
 
-    message_command = message_body.split(None, 1)[0]
     body = ""
 
-    if message_command in ["münze", "coin"]:
+    if message_command["en"] == message_controller.get_command("coin")["en"]:
         possibilities = [_("Kopf"), _("Zahl")]
         result = possibilities[random.randint(0, len(possibilities) - 1)]
         thing = _("Die Münze zeigt")
         body = "{}: {}".format(thing, result)
-    elif len(message_body.split(None, 1)) == 1 or message_body.split(None, 1)[1].strip() == "":
-        result = str(random.randint(1, 6))
-        thing = _("Der Würfel zeigt")
-        body = "{}: {}".format(thing, result)
-    elif message_body.split(None, 1)[1].isdigit():
-        count = int(message_body.split(None, 1)[1])
-        result = str(random.randint(1, count))
-        thing = _("Der Würfel zeigt")
-        body = "{}: {}".format(thing, result)
-    elif re.search(r"^(([0-9]+\s*([×x\*]\s*)?)?D\s*)?[0-9]+(\s*\+\s*(([0-9]+\s*([×x\*]\s*)?)?D\s*)?[0-9]+)*$", message_body.split(None, 1)[1],
-                   re.MULTILINE + re.IGNORECASE) is not None:
-        dices = str(message_body_c.split(None, 1)[1]).split("+")
-        results = list()
-        result_int = 0
-        for dice in dices:
-            match = re.search(r"^((([0-9]+)\s*([×x\*]\s*)?)?D\s*)?([0-9]+)$", dice.strip(), re.MULTILINE + re.IGNORECASE)
-            if match.group(1) is None:
-                res = int(match.group(5))
-                result_int += res
-                text = str(res)
-                results.append(text)
-            elif match.group(3) is None or int(match.group(3)) <= 1:
-                res = random.randint(1, int(match.group(5)))
-                result_int += res
-                text = "D{}: {}".format(int(match.group(5)), res)
-                results.append(text)
-            else:
-                res_text = ""
-
-                if int(match.group(3)) <= 20:
-                    loops = int(match.group(3))
-                    while loops > 0:
-                        res = random.randint(1, int(match.group(5)))
-                        result_int += res
-                        if res_text != "":
-                            res_text += ", "
-                        res_text += str(res)
-                        loops -= 1
-                else:
-                    dice_results = [0] * int(match.group(3))
-                    loops = int(match.group(3))
-                    while loops > 0:
-                        res = random.randint(1, int(match.group(5)))
-                        result_int += res
-                        dice_results[res-1] += 1
-                        loops -= 1
-
-                    e = 0
-                    while e < int(match.group(3)):
-                        e += 1
-                        if dice_results[e-1] == 0:
-                            continue
-
-                        if res_text != "":
-                            res_text += ", "
-
-                        res_text += "{}×{}".format(dice_results[e-1],e)
-
-                text = "{}×D{}: ({})".format(int(match.group(3)), int(match.group(5)), res_text)
-                results.append(text)
-
-            if len(results) >= 4:
-                body = "{}:\n\n{}\n".format(_("Die Würfel zeigen"), " + \n".join(results))
-            else:
-                body = "{}: {}".format(_("Die Würfel zeigen"), " + ".join(results))
-            body += "\n{}: {}".format(_("Ergebnis"), str(result_int))
     else:
-        possibilities = [x.strip() for x in message_body_c.split(None, 1)[1].split(',')]
+        term = response.get_value("term")
+        if term is None or term == "":
+            result = str(random.randint(1, 6))
+            thing = _("Der Würfel zeigt")
+            body = "{}: {}".format(thing, result)
+        elif term.isdigit():
+            count = int(term)
+            result = str(random.randint(1, count))
+            thing = _("Der Würfel zeigt")
+            body = "{}: {}".format(thing, result)
+        elif re.search(r"^(([0-9]+\s*([×x\*]\s*)?)?D\s*)?[0-9]+(\s*\+\s*(([0-9]+\s*([×x\*]\s*)?)?D\s*)?[0-9]+)*$", term,
+                       re.MULTILINE + re.IGNORECASE) is not None:
+            dices = str(term).split("+")
+            results = list()
+            result_int = 0
+            for dice in dices:
+                match = re.search(r"^((([0-9]+)\s*([×x\*]\s*)?)?D\s*)?([0-9]+)$", dice.strip(), re.MULTILINE + re.IGNORECASE)
+                if match.group(1) is None:
+                    res = int(match.group(5))
+                    result_int += res
+                    text = str(res)
+                    results.append(text)
+                elif match.group(3) is None or int(match.group(3)) <= 1:
+                    res = random.randint(1, int(match.group(5)))
+                    result_int += res
+                    text = "D{}: {}".format(int(match.group(5)), res)
+                    results.append(text)
+                else:
+                    res_text = ""
 
-        if len(possibilities) == 1:
-            response_messages.append(MessageController.get_error_response(message))
-            return response_messages, user_command_status, user_command_status_data
+                    if int(match.group(3)) <= 20:
+                        loops = int(match.group(3))
+                        while loops > 0:
+                            res = random.randint(1, int(match.group(5)))
+                            result_int += res
+                            if res_text != "":
+                                res_text += ", "
+                            res_text += str(res)
+                            loops -= 1
+                    else:
+                        dice_results = [0] * int(match.group(3))
+                        loops = int(match.group(3))
+                        while loops > 0:
+                            res = random.randint(1, int(match.group(5)))
+                            result_int += res
+                            dice_results[res-1] += 1
+                            loops -= 1
 
-        result = possibilities[random.randint(0, len(possibilities) - 1)]
-        thing = _("Ich wähle")
-        body = "{}: {}".format(thing, result)
+                        e = 0
+                        while e < int(match.group(3)):
+                            e += 1
+                            if dice_results[e-1] == 0:
+                                continue
 
-    user_command_status = CharacterPersistentClass.STATUS_DYN_MESSAGES
-    user_command_status_data = {
-        'redo': message.body
+                            if res_text != "":
+                                res_text += ", "
+
+                            res_text += "{}×{}".format(dice_results[e-1],e)
+
+                    text = "{}×D{}: ({})".format(int(match.group(3)), int(match.group(5)), res_text)
+                    results.append(text)
+
+                if len(results) >= 4:
+                    body = "{}:\n\n{}\n".format(_("Die Würfel zeigen"), " + \n".join(results))
+                else:
+                    body = "{}: {}".format(_("Die Würfel zeigen"), " + ".join(results))
+                body += "\n{}: {}".format(_("Ergebnis"), str(result_int))
+        else:
+            possibilities = [x.strip() for x in term.split(',')]
+
+            if len(possibilities) == 1:
+                response.add_response_message(_("Bitte gib mehr als nur eine Auswahlmöglichkeit an. z.B.: {}, Zweite, Dritte, ...".format(term)))
+                response.set_suggestions([
+                    message_command.get_example({"command": None, "term": "{}, Zweite, Dritte, ...".format(term)}),
+                    message_controller.get_command("Befehl").get_example({"command": None, "command_name": message_command}),
+                    u"\U0001F504",
+                    "Hilfe"
+                ])
+                return response
+
+            result = possibilities[random.randint(0, len(possibilities) - 1)]
+            thing = _("Ich wähle")
+            body = "{}: {}".format(thing, result)
+
+    response.user_command_status = CharacterPersistentClass.STATUS_DYN_MESSAGES
+    response.user_command_status_data = {
+        'redo': response.get_message_body()
     }
 
-    if bracket is not None:
-        body = "{} {} {}".format(
-            accepted_brackets['open'][bracket],
-            body,
-            accepted_brackets['close'][bracket]
-        )
-
-    response_messages.append(TextMessage(
-        to=message.from_user,
-        chat_id=message.chat_id,
-        body=body,
-        keyboards=[SuggestedResponseKeyboard(responses=[MessageController.generate_text_response(u"\U0001F504"), MessageController.generate_text_response("Hilfe")])]
-    ))
-    return response_messages, user_command_status, user_command_status_data
+    response.add_response_message(body)
+    response.set_suggestions([u"\U0001F504", "Hilfe"])
+    return response
 
 
-debug_url_cmd = MessageCommand([], "Debug-URL", "debug-url", hidden=True, admin_only=True)
+debug_url_cmd = MessageCommand([], "Debug-URL", "debug-url", hidden=True, require_admin=True)
 @MessageController.add_method(debug_url_cmd)
 def quest_status(response: CommandMessageResponse):
 
@@ -2155,54 +2378,50 @@ def quest_status(response: CommandMessageResponse):
 #
 # Befehl statische Antwort / keine Antwort
 #
-@MessageController.add_method({"de": "Hilfe", "en": "help", "_alts": ["?", "h", "hilfe!", "rpg-help"]})
-@MessageController.add_method({"de": "Regeln", "en": "rules"})
-@MessageController.add_method({"de": "nur-Vorlage", "en": "template-only"})
-@MessageController.add_method({"de": "Kurzbefehle", "en": "help2", "_alts": ["Hilfe2"]})
-@MessageController.add_method({"de": "Admin-Hilfe", "en": "admin-help"})
-@MessageController.add_method({"de": "Quellcode", "en": "sourcecode", "_alts": ["source", "lizenz", "licence"]})
-@MessageController.add_method(None)
-def msg_cmd_other(self, message: TextMessage, message_body, message_body_c, response_messages, user_command_status, user_command_status_data, user: User):
-    message_command = message_body.split(None, 1)[0]
-    static_message = self.character_persistent_class.get_static_message(message_command)
+@MessageController.add_method(MessageCommand([], "Hilfe", "help", ["?", "h", "hilfe!", "rpg-help"]))
+@MessageController.add_method(MessageCommand([], "Regeln", "rules"))
+@MessageController.add_method(MessageCommand([], "nur-Vorlage", "template-only", hidden=True))
+@MessageController.add_method(MessageCommand([], "Kurzbefehle", "help2", ["Hilfe2"]))
+@MessageController.add_method(MessageCommand([], "Admin-Hilfe", "admin-help", require_admin=True))
+@MessageController.add_method(MessageCommand([], "Quellcode", "sourcecode", ["source", "lizenz", "licence"]))
+@MessageController.set_static_method
+def msg_cmd_other(response: CommandMessageResponse):
+    message_controller = response.get_message_controller()
+    character_persistent_class = message_controller.character_persistent_class  # type: CharacterPersistentClass
+    message_command = response.get_command().get_command_loc()
+    static_message = character_persistent_class.get_static_message(message_command)
 
-    if static_message is not None:
-        if static_message["response_keyboards"] is None:
-            keyboards = ["Hilfe"]
-        else:
-            keyboards = json.loads(static_message["response_keyboards"])
+    if static_message is None:
+        response.set_suggestions(["Hilfe", "Befehle"])
+        response.add_response_messages(_("Sorry {user[first_name]}, den Befehl '{command}' kenne ich nicht.").format(
+            user=response.get_command(),
+            command=message_command)
+        )
+        return response
 
-        keyboard_responses = list(map(MessageController.generate_text_response, keyboards))
-
-        messages = MessageController.split_messages(static_message["response"].format(
-            bot_username=self.bot_username,
-            user=user,
-            command=message_command,
-            kik_group_id=self.config.get("KikGroup", "somegroup"),
-            user_id=self.get_from_userid(message),
-            message=message,
-            ruser=LazyRandomKikUser(message.participants, user, self.config.get("Admins", "admin1").split(',')[0].strip(), self.character_persistent_class),
-            args=[x.strip() for x in message_body_c.split()[1:]]
-        ))
-
-        if len(keyboard_responses) > 0:
-            kb = [SuggestedResponseKeyboard(responses=keyboard_responses)]
-        else:
-            kb = []
-
-        for m in messages:
-            response_messages.append(TextMessage(
-                to=message.from_user,
-                chat_id=message.chat_id,
-                body=m,
-                keyboards=kb
-            ))
-
+    if static_message["response_keyboards"] is None:
+        suggestions = ["Hilfe"]
     else:
-        response_messages.append(TextMessage(
-            to=message.from_user,
-            chat_id=message.chat_id,
-            body=_("Sorry {user[first_name]}, den Befehl '{command}' kenne ich nicht.").format(user=user, command=message_command),
-            keyboards=[SuggestedResponseKeyboard(responses=[MessageController.generate_text_response("Hilfe")])]
-        ))
-    return response_messages, user_command_status, user_command_status_data
+        suggestions = json.loads(static_message["response_keyboards"])
+
+    messages = MessageController.split_messages(static_message["response"].format(
+        bot_username=message_controller.bot_username,
+        user=response.get_user(),
+        command=message_command,
+        kik_group_id=message_controller.config.get("KikGroup", "somegroup"),
+        user_id=response.get_user().get_user_id(),
+        message=response.get_orig_message(),
+        ruser=LazyRandomKikUser(
+            response.get_orig_message().participants,
+            response.get_user(),
+            message_controller.config.get("Admins", "admin1").split(',')[0].strip(),
+            character_persistent_class
+        ),
+        args=[v.strip() for v in response.get_params().values()]
+    ))
+
+    response.set_suggestions(suggestions)
+    response.add_response_messages(messages)
+    return response
+
+

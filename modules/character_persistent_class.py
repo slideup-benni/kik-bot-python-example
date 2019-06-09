@@ -285,17 +285,21 @@ class CharacterPersistentClass:
         chars = self.cursor.fetchall()
         return chars
 
-    def list_all_users_with_chars(self, page=1, limit=15):
+    def list_all_users_with_chars(self, page=1, limit=15, list_all=False):
         self.connect_database()
 
-        self.cursor.execute((
+        query = (
             "SELECT id, user_id, MAX(char_id) AS chars_cnt, created "
             "FROM characters "
             "WHERE deleted IS NULL "
             "GROUP BY user_id "
             "ORDER BY created DESC "
-            "LIMIT ?,? "
-        ), [(page-1)*limit, limit+1])
+        )
+
+        if list_all is False:
+            query += "LIMIT ?,? "
+
+        self.cursor.execute(query, [(page - 1) * limit, limit + 1] if list_all is False else [])
         return self.cursor.fetchall()
 
     def find_char(self, name, user_id):
@@ -316,15 +320,25 @@ class CharacterPersistentClass:
 
         return chars
 
-    def search_char(self, query, query_key="name"):
+    def search_char(self, query, query_key="name", user_id=None):
         self.connect_database()
 
-        self.cursor.execute((
-            "SELECT id, user_id, char_id, text, creator_id, MAX(created) AS created "
-            "FROM characters "
-            "WHERE deleted IS NULL AND text LIKE ? "
-            "GROUP BY user_id, char_id"
-        ), ["%"+query+"%"])
+        if user_id is None:
+            self.cursor.execute((
+                "SELECT id, user_id, char_id, text, creator_id, MAX(created) AS created "
+                "FROM characters "
+                "WHERE deleted IS NULL AND text LIKE ? "
+                "GROUP BY user_id, char_id"
+            ), ["%"+query+"%"])
+
+        else:
+            self.cursor.execute((
+                "SELECT id, user_id, char_id, text, creator_id, MAX(created) AS created "
+                "FROM characters "
+                "WHERE deleted IS NULL AND user_id=? AND text LIKE ? "
+                "GROUP BY user_id, char_id"
+            ), [user_id, "%" + query + "%"])
+
         chars_raw = self.cursor.fetchall()
         chars = []
 
@@ -471,6 +485,16 @@ class CharacterPersistentClass:
         ), [command, "%\""+command+"\"%"])
 
         return self.cursor.fetchone()
+
+    def get_all_static_messages(self):
+        self.connect_database()
+
+        self.cursor.execute((
+            "SELECT * "
+            "FROM static_messages"
+        ))
+
+        return self.cursor.fetchall()
 
     def create_database(self):
         print("Datenbank {} nicht vorhanden - Datenbank wird anglegt.".format(os.path.basename(self.database_path)))

@@ -67,14 +67,14 @@ CREATE UNIQUE INDEX quests_caption_uindex ON quests (caption);
 
 CREATE TABLE quest_parts
 (
-	id              INTEGER PRIMARY KEY AUTOINCREMENT,
-	quest_id        INTEGER NOT NULL,
-	part_num        INTEGER NOT NULL,
-	next_part_num   INTEGER NOT NULL,
-	part_name       TEXT NOT NULL,
-	condition       TEXT,
-	text            TEXT,
-	next_step_text  TEXT
+	  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+	  quest_id        INTEGER NOT NULL,
+	  part_num        INTEGER NOT NULL,
+	  next_part_num   INTEGER NOT NULL,
+	  part_name       TEXT NOT NULL,
+	  condition       TEXT,
+	  text            TEXT,
+	  next_step_text  TEXT
 );
 
 CREATE TABLE character_quests

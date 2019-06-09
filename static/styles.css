@@ -1,4 +1,4 @@
-.message_bubble {
+#view_debug .message_bubble {
     max-width: 400px;
     padding: 10px;
     border: 1px solid gray;
@@ -6,7 +6,7 @@
     margin-bottom: 10px;
     position: relative;
 }
-.keyboard {
+#view_debug .keyboard {
     max-width: 406px;
     padding: 7px;
     border: 1px solid gray;
@@ -17,7 +17,7 @@
     overflow: hidden;
     cursor: pointer;
 }
-.message_json {
+#view_debug .message_json {
     display: none;
     position: absolute;
     background: white;
@@ -29,52 +29,52 @@
     width: 600px;
     overflow: auto;
 }
-.message_bubble:hover .message_json {
+#view_debug .message_bubble:hover .message_json {
     display: block;
 }
-.keyboard:hover {
+#view_debug .keyboard:hover {
     background: yellow;
 }
-p:first-child {
+#view_debug p:first-child {
     margin-top: 0;
 }
-p:last-child {
+#view_debug p:last-child {
     margin-bottom: 0;
 }
-img {
+#view_debug img {
     width: 100%;
 }
-form {
+#view_debug form {
     max-width: 400px;
     background: lightgray;
     padding: 10px;
     border-top: 2px dashed;
     margin: 20px 0 0 0;
 }
-dd {
+#view_debug dd {
     margin: 0 0 20px;
 }
-dd > textarea,
-dd > input,
-dd > select {
+#view_debug dd > textarea,
+#view_debug dd > input,
+#view_debug dd > select {
     width: 100%;
     padding: 5px;
 }
-dt {
+#view_debug dt {
     margin-bottom: 5px;
 }
 
-textarea {
+#view_debug textarea {
     height: 80px;
 }
 
-input[type=submit] {
+#view_debug input[type=submit] {
     padding: 5px 30px;
     margin: auto;
     display: block;
 }
 
-#info {
+#view_debug #info {
     max-width: 420px;
     text-align: right;
     color: gray;
@@ -82,7 +82,7 @@ input[type=submit] {
     position: relative;
 }
 
-#info_hover {
+#view_debug #info_hover {
     display: none;
     position: absolute;
     background: white;
@@ -93,15 +93,15 @@ input[type=submit] {
     border: 1px solid black;
 }
 
-#info_hover ul {
+#view_debug #info_hover ul {
     margin: 0;
     padding: 10px 10px 10px 30px;
 }
 
-#info:hover {
+#view_debug #info:hover {
     color: black;
 }
 
-#info:hover #info_hover {
+#view_debug #info:hover #info_hover {
     display: block;
 }

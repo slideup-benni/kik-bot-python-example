@@ -55,6 +55,9 @@ class User:
         self.user_db["authed_since"] = None
         self.user_db["authed_by"] = None
 
+    def set_admin(self, is_admin: bool):
+        self.user_db["is_admin"] = int(is_admin)
+
     def set_linked_chars(self, user_id, char_id):
         self.user_db["is_user_id"] = user_id
         self.user_db["is_char_id"] = char_id

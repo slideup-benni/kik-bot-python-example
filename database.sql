@@ -5,6 +5,7 @@ CREATE TABLE characters (
     text TEXT NOT NULL,
     creator_id TEXT NOT NULL,
     created INTEGER NOT NULL,
+    deactivated INTEGER,
     deletor_id TEXT,
     deleted INTEGER
 );
@@ -16,14 +17,6 @@ CREATE TABLE character_pictures (
     creator_id TEXT NOT NULL,
     created INTEGER NOT NULL,
     active int DEFAULT 0 NOT NULL,
-    deletor_id TEXT,
-    deleted INTEGER
-);
-CREATE TABLE users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id TEXT NOT NULL,
-    creator_id TEXT NOT NULL,
-    created INTEGER NOT NULL,
     deletor_id TEXT,
     deleted INTEGER
 );

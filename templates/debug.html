@@ -1,3 +1,6 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
 {% from "_formhelpers.html" import render_field %}
 <link rel="stylesheet" type="text/css" href="../static/styles.css">
 <link rel="terms" href="path/to/terms/of/use.html">
@@ -6,7 +9,8 @@
 <script type="text/javascript" src="https://code.jquery.com/jquery-3.3.1.min.js"></script>
 <script type="text/javascript" src="https://cdn.kik.com/kik/2.3.7/kik.js"></script>
 <script type="text/javascript" src="../static/common.js"></script>
-
+</head>
+<body id="view_debug">
 {% for message in messages %}
     <div class="message_bubble">
         {% if message|attr("pic_url") %}
@@ -21,10 +25,11 @@
 {% for keyboard in keyboards %}
     <div class="keyboard">{{ keyboard.body }}</div>
 {% endfor %}
-<form method=post>
+<form method=post action="">
   <dl>
     {{ render_field(form.message_body) }}
     {{ render_field(form.message_from_user) }}
+    {{ render_field(form.message_password) }}
     {{ render_field(form.message_type) }}
     {{ render_field(form.message_lang) }}
   </dl>
@@ -38,3 +43,5 @@
         </ul>
     </div>
 </div>
+</body>
+</html>
