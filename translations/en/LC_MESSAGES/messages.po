@@ -3,7 +3,7 @@ msgstr ""
 "Project-Id-Version: rpcharbot\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
 "POT-Creation-Date: 2018-08-20 22:57+0200\n"
-"PO-Revision-Date: 2020-02-09 14:42\n"
+"PO-Revision-Date: 2020-02-09 14:53\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: English\n"
 "MIME-Version: 1.0\n"
@@ -54,11 +54,11 @@ msgstr "twelve"
 
 #: modules/message_controller.py:230
 msgid "ein zufälliges Beispiel"
-msgstr ""
+msgstr "Random example"
 
 #: modules/message_controller.py:232
 msgid "{count} zufällige Beispiele"
-msgstr ""
+msgstr "{count} Random examples"
 
 #: modules/message_controller.py:285
 msgid "Fehler beim Aufruf des Befehls.\n\n"
@@ -66,7 +66,11 @@ msgid "Fehler beim Aufruf des Befehls.\n\n"
 "{command_structure}\n\n"
 "{examples_3}\n\n"
 "Für weitere Beispiele siehe '{help_command}'."
-msgstr ""
+msgstr "Error opening the command.\n\n"
+"The structure of the command looks like this:\n"
+"{command_structure}\n\n"
+"{examples_3}\n\n"
+"For further examples see '{help_command}'."
 
 #: modules/message_controller.py:424
 msgid "Hi {user[first_name]}, mit mir kann man auch direkt schreiben. Wenn du möchtest, kannst du hier auch @{bot_username} vor allen Befehlen weg lassen. Probier es aus: Antworte mir einfach mit '{help_command}' und du bekommst eine Liste aller Befehle"
